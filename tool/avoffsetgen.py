@@ -142,6 +142,7 @@ class ClipGenerator:
         self.audio_codec = args.audio_codec
         self.video_codec = args.video_codec
         self.intra_video = args.intra_video
+        self.b_frames = args.b_frames
         self.images = []
         self.font = ImageFont.load_default(size=max(16, min(self.width, self.height) // 12))
 
@@ -177,7 +178,8 @@ class ClipGenerator:
         '''
         QR frame carrying the v2 sequence and sparse-marker timing metadata.
         '''
-        payload = f'p=2,s={sequence},q={round(self.phase * 1000)},i={sequence & 0xFF},I=0,m=1,t=0'
+        code = sequence & 0xFF
+        payload = f'p=2,s={code},q={round(self.phase * 1000)},i={code},I=0,m=1,t=0'
         qr_img = make_qr_image(payload)
         size = min(self.width, self.height)
         qr_img = qr_img.resize((size, size))
@@ -353,6 +355,8 @@ class ClipGenerator:
             command += ['-c:v', 'libx264']
         if self.intra_video:
             command += ['-x264-params', 'keyint=1:min-keyint=1:scenecut=0:bframes=0']
+        elif self.b_frames is not None:
+            command += ['-bf', str(self.b_frames)]
         if self.audio_codec:
             command += ['-c:a', self.audio_codec]
         else:
@@ -390,15 +394,22 @@ def main():
         '--contrast', type=int, default=58, help='Sparse checker luminance offset from gray'
     )
     parser.add_argument(
-        '--audio-codec', help='ffmpeg audio codec, e.g. aac or pcm_s16le'
+        '--audio-codec', default='pcm_s16le',
+        help='ffmpeg audio codec (default pcm_s16le; lossy codecs add encoder priming bias)'
     )
     parser.add_argument(
-        '--video-codec', help='ffmpeg video codec, e.g. libx264'
+        '--video-codec', default='libx264',
+        help='ffmpeg video codec (default libx264)'
     )
     parser.add_argument(
         '--intra-video',
-        action='store_true',
-        help='Encode each video frame independently with no B-frames',
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help='Encode each video frame independently with no B-frames (default: enabled)',
+    )
+    parser.add_argument(
+        '--b-frames', type=int, default=None,
+        help='Maximum B-frames for non-intra video, e.g. 0 for P-frame GOPs'
     )
     parser.add_argument('-o', '--output', default='av-offset-pattern.mp4', help='Output clip path')
     args = parser.parse_args()
