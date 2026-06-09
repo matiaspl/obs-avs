@@ -256,6 +256,20 @@
 
 		body.fullscreen-running {
 			display: block;
+			width: 100vw;
+			height: 100vh;
+		}
+
+		body.fullscreen-running .stage {
+			width: 100vw;
+			height: 100vh;
+			min-height: 100vh;
+		}
+
+		.stage:fullscreen,
+		.stage:-webkit-full-screen {
+			width: 100vw;
+			height: 100vh;
 		}
 	</style>
 </head>
@@ -343,7 +357,8 @@
 		const QR_DATA_CODEWORDS = 44;
 		const QR_ECC_CODEWORDS = 26;
 		const QR_DISPLAY_LEAD_MS = 700;
-		const PROGRESS_WINDOW_MS = 1000;
+		const AUDIO_SCOPE_WINDOW_MS = 1000;
+		const GITHUB_PAGES_TIME_ENDPOINT = "https://broadcast-ready.com/obs-audio-video-sync-dock/time.php";
 		const VIDEO_NEUTRAL = "#7f7f7f";
 
 		const el = {
@@ -553,6 +568,17 @@
 				updateStatus();
 		}
 
+		function applyStaticHostDefaults() {
+			const host = location.hostname.toLowerCase();
+			if (!host.endsWith(".github.io"))
+				return;
+			const params = new URLSearchParams(location.search);
+			if (params.has("endpoint"))
+				return;
+			if (el.timeEndpoint.value.trim() === "time.php")
+				el.timeEndpoint.value = GITHUB_PAGES_TIME_ENDPOINT;
+		}
+
 		function resetRunClockSource() {
 			if (!state.running)
 				return;
@@ -632,7 +658,7 @@
 		}
 
 		async function enterFullscreen() {
-			const target = document.documentElement;
+			const target = el.canvas.parentElement || document.documentElement;
 			if (!document.fullscreenElement && target.requestFullscreen)
 				await target.requestFullscreen({ navigationUI: "hide" });
 			updateFullscreenClass();
@@ -1679,66 +1705,144 @@
 				return;
 
 			const delta = now - event.targetMs;
-			if (Math.abs(delta) > PROGRESS_WINDOW_MS)
-				return;
+			const clampedDelta = Math.max(-AUDIO_SCOPE_WINDOW_MS, Math.min(AUDIO_SCOPE_WINDOW_MS, delta));
 
 			const safeTop = square.y + square.size;
 			const bottomMargin = ctx.canvas.height - safeTop;
-			if (bottomMargin < 22 * dpr)
+			if (bottomMargin < 34 * dpr)
 				return;
 
 			const marginX = Math.max(18 * dpr, ctx.canvas.width * 0.08);
 			const x = Math.round(marginX);
 			const width = Math.max(1, Math.round(ctx.canvas.width - marginX * 2));
-			const centerX = x + width * 0.5;
-			const y = Math.round(safeTop + bottomMargin * 0.5);
-			const barHeight = Math.max(3 * dpr, Math.round(bottomMargin * 0.12));
-			const barY = Math.round(y - barHeight * 0.5);
-			const progress = Math.max(0, Math.min(1, (delta + PROGRESS_WINDOW_MS) / (PROGRESS_WINDOW_MS * 2)));
-			const indicatorX = x + width * progress;
-			const tickHeight = Math.max(8 * dpr, barHeight * 2.3);
+			const height = Math.max(24 * dpr, Math.min(78 * dpr, bottomMargin * 0.74));
+			const y = Math.round(safeTop + (bottomMargin - height) * 0.5);
+			const padX = Math.max(8 * dpr, width * 0.025);
+			const padY = Math.max(5 * dpr, height * 0.16);
+			const x0 = x + padX;
+			const y0 = y + padY;
+			const innerWidth = width - padX * 2;
+			const innerHeight = height - padY * 2;
+			const midY = y0 + innerHeight * 0.45;
+			const amp = innerHeight * 0.28;
+			const tToX = (tMs) => x0 + (tMs + AUDIO_SCOPE_WINDOW_MS) / (AUDIO_SCOPE_WINDOW_MS * 2) * innerWidth;
+			const chirpStart = -MARKER_MS * 0.5;
+			const chirpEnd = MARKER_MS * 0.5;
+			const payloadStart = chirpEnd + GUARD_MS;
+			const payloadStride = SYMBOL_MS + GUARD_MS;
+			const payloadBlocks = Array.from({ length: PAYLOAD_SYMBOLS }, (_, index) => {
+				const start = payloadStart + index * payloadStride;
+				return { start, end: start + SYMBOL_MS };
+			});
+			const progress = (clampedDelta + AUDIO_SCOPE_WINDOW_MS) / (AUDIO_SCOPE_WINDOW_MS * 2);
+			const indicatorX = x0 + innerWidth * progress;
+			const eventX = tToX(0);
+			const chirpStartX = tToX(chirpStart);
+			const chirpEndX = tToX(chirpEnd);
 
 			ctx.save();
 			ctx.fillStyle = "rgba(20, 24, 29, 0.78)";
-			ctx.fillRect(x, barY, width, barHeight);
-			ctx.fillStyle = "#5fb7ff";
-			ctx.fillRect(x, barY, Math.max(0, indicatorX - x), barHeight);
+			ctx.fillRect(x, y, width, height);
+			ctx.fillStyle = "rgba(95, 183, 255, 0.18)";
+			ctx.fillRect(x0, y, Math.max(0, indicatorX - x0), height);
+			ctx.fillStyle = "rgba(237, 242, 245, 0.12)";
+			ctx.fillRect(chirpStartX, y0, chirpEndX - chirpStartX, innerHeight);
+			for (let i = 0; i < payloadBlocks.length; i++) {
+				const block = payloadBlocks[i];
+				const startX = tToX(Math.max(-AUDIO_SCOPE_WINDOW_MS, block.start));
+				const endX = tToX(Math.min(AUDIO_SCOPE_WINDOW_MS, block.end));
+				if (endX <= x0 || startX >= x0 + innerWidth)
+					continue;
+				ctx.fillStyle = i % 2 ? "rgba(95, 183, 255, 0.16)" : "rgba(95, 183, 255, 0.24)";
+				ctx.fillRect(startX, y0 + innerHeight * 0.58, endX - startX, innerHeight * 0.22);
+			}
 
-			ctx.strokeStyle = "rgba(20, 24, 29, 0.48)";
+			ctx.strokeStyle = "rgba(237, 242, 245, 0.24)";
 			ctx.lineWidth = Math.max(1, dpr);
-			for (let i = -3; i <= 3; i++) {
-				const tickX = centerX + width * 0.5 * (i / 4);
+			for (const tickMs of [
+				-AUDIO_SCOPE_WINDOW_MS,
+				-AUDIO_SCOPE_WINDOW_MS * 0.5,
+				0,
+				AUDIO_SCOPE_WINDOW_MS * 0.5,
+				AUDIO_SCOPE_WINDOW_MS,
+			]) {
+				const tickX = tToX(tickMs);
 				ctx.beginPath();
-				ctx.moveTo(tickX, y - tickHeight * 0.45);
-				ctx.lineTo(tickX, y + tickHeight * 0.45);
+				ctx.moveTo(tickX, y0);
+				ctx.lineTo(tickX, y0 + innerHeight);
 				ctx.stroke();
 			}
+
+			ctx.strokeStyle = "rgba(237, 242, 245, 0.3)";
+			ctx.beginPath();
+			ctx.moveTo(x0, midY);
+			ctx.lineTo(x0 + innerWidth, midY);
+			ctx.stroke();
+
+			ctx.strokeStyle = "rgba(240, 184, 92, 0.5)";
+			ctx.lineWidth = Math.max(1, dpr);
+			ctx.beginPath();
+			ctx.moveTo(chirpStartX, y0 + innerHeight * 0.08);
+			ctx.lineTo(chirpStartX, y0 + innerHeight * 0.92);
+			ctx.moveTo(chirpEndX, y0 + innerHeight * 0.08);
+			ctx.lineTo(chirpEndX, y0 + innerHeight * 0.92);
+			for (const block of payloadBlocks) {
+				const startX = tToX(block.start);
+				const endX = tToX(block.end);
+				ctx.moveTo(startX, y0 + innerHeight * 0.56);
+				ctx.lineTo(startX, y0 + innerHeight * 0.86);
+				ctx.moveTo(endX, y0 + innerHeight * 0.62);
+				ctx.lineTo(endX, y0 + innerHeight * 0.82);
+			}
+			ctx.stroke();
+
+			ctx.strokeStyle = "#edf2f5";
+			ctx.lineWidth = Math.max(1.4, 1.4 * dpr);
+			ctx.beginPath();
+			for (let i = 0; i <= 180; i++) {
+				const t = chirpStart + (chirpEnd - chirpStart) * (i / 180);
+				const p = (t - chirpStart) / MARKER_MS;
+				const envelope = 0.5 - 0.5 * Math.cos(2 * Math.PI * p);
+				const phase = 2 * Math.PI * (6.2 * p + 7.4 * p * p);
+				const px = tToX(t);
+				const py = midY - Math.sin(phase) * envelope * amp;
+				if (i === 0)
+					ctx.moveTo(px, py);
+				else
+					ctx.lineTo(px, py);
+			}
+			ctx.stroke();
+
+			ctx.fillStyle = "#f0b85c";
+			ctx.beginPath();
+			ctx.arc(eventX, midY, Math.max(3.2 * dpr, 4), 0, Math.PI * 2);
+			ctx.fill();
 
 			ctx.strokeStyle = "#07110d";
 			ctx.lineWidth = Math.max(1, 1.4 * dpr);
 			ctx.beginPath();
-			ctx.moveTo(indicatorX, y - tickHeight * 0.55);
-			ctx.lineTo(indicatorX, y + tickHeight * 0.55);
+			ctx.moveTo(indicatorX, y0);
+			ctx.lineTo(indicatorX, y0 + innerHeight);
 			ctx.stroke();
 
 			ctx.strokeStyle = "#edf2f5";
 			ctx.lineWidth = Math.max(2, 2 * dpr);
 			ctx.beginPath();
-			ctx.moveTo(centerX, y - tickHeight * 0.7);
-			ctx.lineTo(centerX, y + tickHeight * 0.7);
+			ctx.moveTo(eventX, y0 - 2 * dpr);
+			ctx.lineTo(eventX, y0 + innerHeight + 2 * dpr);
 			ctx.stroke();
 
-			if (bottomMargin >= 28 * dpr) {
-				const fontSize = Math.max(9 * dpr, Math.min(12 * dpr, bottomMargin * 0.24));
+			if (height >= 38 * dpr) {
+				const fontSize = Math.max(8 * dpr, Math.min(11 * dpr, height * 0.15));
 				ctx.font = `${fontSize}px ui-monospace, SFMono-Regular, Menlo, monospace`;
 				ctx.textAlign = "center";
 				ctx.textBaseline = "middle";
-				ctx.fillStyle = "#edf2f5";
-				ctx.fillText(fmtSignedProgressMs(delta), indicatorX, y - Math.min(11 * dpr, bottomMargin * 0.3));
 				ctx.fillStyle = "rgba(237, 242, 245, 0.86)";
-				ctx.fillText("-1s", x, y + Math.min(11 * dpr, bottomMargin * 0.3));
-				ctx.fillText("0", centerX, y + Math.min(11 * dpr, bottomMargin * 0.3));
-				ctx.fillText("+1s", x + width, y + Math.min(11 * dpr, bottomMargin * 0.3));
+				ctx.fillText(`-${AUDIO_SCOPE_WINDOW_MS}`, x0, y0 + innerHeight + fontSize * 0.82);
+				ctx.fillText("0", eventX, y0 + innerHeight + fontSize * 0.82);
+				ctx.fillText(`+${AUDIO_SCOPE_WINDOW_MS}`, x0 + innerWidth, y0 + innerHeight + fontSize * 0.82);
+				ctx.fillStyle = "#5fb7ff";
+				ctx.fillText(fmtSignedProgressMs(delta), indicatorX, y0 - fontSize * 0.78);
 			}
 			ctx.restore();
 		}
@@ -1779,7 +1883,17 @@
 			const active = Math.abs(delta) <= phaseMs;
 			const qrVisible = event && delta < -phaseMs && delta >= -QR_DISPLAY_LEAD_MS;
 
-			const next = event || { targetMs: nextBoundary(now, state.leadMs, period), sequence: 0 };
+			const nextTargetMs = nextBoundary(now, state.leadMs, period);
+			const next = event || { targetMs: nextTargetMs, sequence: sequenceForTarget(nextTargetMs) };
+			const upcomingTargetMs = nextBoundary(now, 0, period);
+			const upcoming = { targetMs: upcomingTargetMs, sequence: sequenceForTarget(upcomingTargetMs) };
+			const progressEvent = state.running
+				? event && Math.abs(delta) <= AUDIO_SCOPE_WINDOW_MS
+					? event
+					: event && event.targetMs > now
+						? event
+						: upcoming
+				: null;
 			const square = markerSquare(w, h);
 
 			if (active) {
@@ -1793,7 +1907,7 @@
 				drawNeutralFrame(ctx);
 			}
 
-			drawSyncProgress(ctx, square, event, now, dpr);
+			drawSyncProgress(ctx, square, progressEvent, now, dpr);
 			updateBadges(next, now);
 			requestAnimationFrame(drawStage);
 		}
@@ -1967,6 +2081,7 @@
 				state.autoStart = false;
 			if (params.get("autostart") === "1")
 				state.autoStart = true;
+			applyStaticHostDefaults();
 			updateTimeSourceControls();
 		}
 

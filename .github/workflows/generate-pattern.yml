@@ -38,6 +38,13 @@ jobs:
         set -e
         ./docs/generate-pattern.sh -outdir _site
 
+    - name: Add web generator
+      run: |
+        set -e
+        cp docs/ntp-cue-generator.html _site/index.html
+        cp docs/ntp-cue-generator.html _site/ntp-cue-generator.html
+        touch _site/.nojekyll
+
     - name: Upload files as artifact
       uses: actions/upload-pages-artifact@v3
       with:
