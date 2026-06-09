@@ -12,6 +12,26 @@ Use this workflow when you want to measure the relative offset between audio and
 video after playing a test clip through an external device and recording it back
 with a camera and microphone.
 
+Summary: use the v2 AV offset workflow for repeatable relative AV sync checks
+through real displays, speakers, cameras, microphones, OBS media sources, and
+recordings. The most important improvements over the original pattern are
+lower-flash video markers, cleaner event timing, sample-centered chirp/tick
+audio detection designed for echo and reverberation tolerance, DTMF/CRC event
+identity, and MOV reference assets that avoid AAC priming and B-frame reorder
+bias.
+
+V2 differences and improvements: the original legacy pattern relies on
+high-contrast full-frame quadrant flashes and a tone-coded audio marker whose
+timing is tied to frame-sized pulses. The flashes can be uncomfortable or
+unsuitable for photosensitive viewers, while display cadence, camera exposure,
+encoder reordering, lossy audio priming, or a missed marker can bias the result.
+Version 2 separates timing from identity: sparse checkerboard transitions define
+the video instant, a matched-filter chirp/tick defines the audio fiducial, and
+the later DTMF/CRC payload only pairs the correct events. It is less visually
+intrusive and easier to capture, while still measuring relative AV offset rather
+than true source-to-capture latency; use the web generator workflow when you
+need glass-to-glass latency.
+
 1. Generate a low-flash AV offset clip:
 
    ```sh
@@ -41,20 +61,6 @@ with a camera and microphone.
 2. Play the generated clip on the device under test.
 3. Capture the device with the camera and microphone that OBS will use.
 4. Open the Audio Video Sync dock, select `AV Offset Clip`, and start measuring.
-
-Version 2 was created for offset checks where the original sync-pattern
-workflow was too fragile and visually aggressive: the legacy clip uses
-high-contrast full-frame quadrant flashes that can be uncomfortable or
-unsuitable for photosensitive viewers, plus a tone-coded audio marker whose
-timing is tied to frame-sized pulses. Display cadence, camera exposure, encoder
-reordering, lossy audio priming, or a missed marker can therefore bias the
-result. The v2 AV offset clip separates timing from identity: low-flash sparse
-checkerboard transitions provide a cleaner video instant, the centered
-chirp/tick provides a sample-level audio fiducial, and the DTMF/CRC payload lets
-the analyzer pair the correct audio and video events. This makes repeated
-measurements less visually intrusive, easier to capture, and better suited to
-validating relative AV offset through real cameras, microphones, media sources,
-and recordings.
 
 The v2 clip uses sparse checkerboard events for video timing and far-field
 acoustic packets for audio timing and identity. The exact audio event is the
