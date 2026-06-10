@@ -147,7 +147,7 @@ robustness design, not a guarantee: strong unresolved early reflections can
 still bias any acoustic time-of-arrival measurement, so difficult rooms should
 be validated with repeat runs and microphone placement changes.
 
-Related background: [matched-filter delay estimation](https://arxiv.org/abs/1101.2713),
+Related background: [A random stackexchange post](https://dsp.stackexchange.com/a/71785), [matched-filter delay estimation](https://arxiv.org/abs/1101.2713),
 [multipath delay-estimation bias](https://arxiv.org/abs/2012.05790),
 [ITU-T Q.23](https://www.itu.int/rec/T-REC-Q.23/en), and
 [ITU-T Q.24](https://www.itu.int/rec/T-REC-Q.24/en).
