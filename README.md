@@ -54,13 +54,13 @@ with a camera and microphone.
 
    | MOV file | Video frame rate | Supported display frame rate |
    | -------- | ----------------:| ---------------------------- |
-   | [av-offset-pattern-6000.mov](https://matiaspl.github.io/obs-audio-video-sync-dock/av-offset-pattern-6000.mov) | 60 FPS | 30 FPS, 60 FPS, or 120 FPS (iPhone) |
-   | [av-offset-pattern-5994.mov](https://matiaspl.github.io/obs-audio-video-sync-dock/av-offset-pattern-5994.mov) | 59.94 FPS | 29.97 FPS, 59.94 FPS, or 119.88 FPS |
-   | [av-offset-pattern-5000.mov](https://matiaspl.github.io/obs-audio-video-sync-dock/av-offset-pattern-5000.mov) | 50 FPS | 25 FPS or 50 FPS (PAL) |
-   | [av-offset-pattern-3000.mov](https://matiaspl.github.io/obs-audio-video-sync-dock/av-offset-pattern-3000.mov) | 30 FPS | 30 FPS or 60 FPS |
-   | [av-offset-pattern-2997.mov](https://matiaspl.github.io/obs-audio-video-sync-dock/av-offset-pattern-2997.mov) | 29.97 FPS | 29.97 FPS or 59.94 FPS |
-   | [av-offset-pattern-2400.mov](https://matiaspl.github.io/obs-audio-video-sync-dock/av-offset-pattern-2400.mov) | 24 FPS | 24 FPS or 48 FPS |
-   | [av-offset-pattern-2398.mov](https://matiaspl.github.io/obs-audio-video-sync-dock/av-offset-pattern-2398.mov) | 23.98 FPS | 23.98 FPS (24 FPS NTSC) |
+   | [av-offset-pattern-6000.mov](https://matiaspl.github.io/obs-avs/av-offset-pattern-6000.mov) | 60 FPS | 30 FPS, 60 FPS, or 120 FPS (iPhone) |
+   | [av-offset-pattern-5994.mov](https://matiaspl.github.io/obs-avs/av-offset-pattern-5994.mov) | 59.94 FPS | 29.97 FPS, 59.94 FPS, or 119.88 FPS |
+   | [av-offset-pattern-5000.mov](https://matiaspl.github.io/obs-avs/av-offset-pattern-5000.mov) | 50 FPS | 25 FPS or 50 FPS (PAL) |
+   | [av-offset-pattern-3000.mov](https://matiaspl.github.io/obs-avs/av-offset-pattern-3000.mov) | 30 FPS | 30 FPS or 60 FPS |
+   | [av-offset-pattern-2997.mov](https://matiaspl.github.io/obs-avs/av-offset-pattern-2997.mov) | 29.97 FPS | 29.97 FPS or 59.94 FPS |
+   | [av-offset-pattern-2400.mov](https://matiaspl.github.io/obs-avs/av-offset-pattern-2400.mov) | 24 FPS | 24 FPS or 48 FPS |
+   | [av-offset-pattern-2398.mov](https://matiaspl.github.io/obs-avs/av-offset-pattern-2398.mov) | 23.98 FPS | 23.98 FPS (24 FPS NTSC) |
 
    The generated MOV files are the preferred reference assets. They use PCM s16
    mono audio and intra-only H.264 video without B-frames, so the timing markers
@@ -87,9 +87,9 @@ buffering settings.
 
 ### Web generator workflow
 
-For live source-to-capture latency tests, open the web-based NTP Cue Generator:
+For live source-to-capture latency tests, open the web-based AVS Cue Generator:
 
-<[https://matiaspl.github.io/obs-audio-video-sync-dock/](https://matiaspl.github.io/obs-audio-video-sync-dock/)>
+<[https://matiaspl.github.io/obs-avs/](https://matiaspl.github.io/obs-avs/)>
 
 The web generator renders the same v2 visual marker sequence in the browser and
 schedules matching acoustic packets against a shared wall-clock target time. Its
@@ -104,11 +104,11 @@ This is especially useful for measuring the latency of a capture-encode-decode c
 
    | Video file | Video frame rate | Supported display frame rate |
    | ---------- | ----------------:| --------------------- |
-   | [sync-pattern-6000.mp4](https://matiaspl.github.io/obs-audio-video-sync-dock/sync-pattern-6000.mp4) | 60 FPS    | 30 FPS, 60 FPS, or 120 FPS (iPhone) |
-   | [sync-pattern-5994.mp4](https://matiaspl.github.io/obs-audio-video-sync-dock/sync-pattern-5994.mp4) | 59.94 FPS | 29.97 FPS, 59.94 FPS, or 119.88 FPS |
-   | [sync-pattern-5000.mp4](https://matiaspl.github.io/obs-audio-video-sync-dock/sync-pattern-5000.mp4) | 50 FPS    | 25 FPS or 50 FPS (PAL) |
-   | [sync-pattern-2400.mp4](https://matiaspl.github.io/obs-audio-video-sync-dock/sync-pattern-2400.mp4) | 24 FPS    | 24 FPS or 48 FPS |
-   | [sync-pattern-2398.mp4](https://matiaspl.github.io/obs-audio-video-sync-dock/sync-pattern-2398.mp4) | 23.98 FPS | 23.98 FPS (24 FPS NTSC) |
+   | [sync-pattern-6000.mp4](https://matiaspl.github.io/obs-avs/sync-pattern-6000.mp4) | 60 FPS    | 30 FPS, 60 FPS, or 120 FPS (iPhone) |
+   | [sync-pattern-5994.mp4](https://matiaspl.github.io/obs-avs/sync-pattern-5994.mp4) | 59.94 FPS | 29.97 FPS, 59.94 FPS, or 119.88 FPS |
+   | [sync-pattern-5000.mp4](https://matiaspl.github.io/obs-avs/sync-pattern-5000.mp4) | 50 FPS    | 25 FPS or 50 FPS (PAL) |
+   | [sync-pattern-2400.mp4](https://matiaspl.github.io/obs-avs/sync-pattern-2400.mp4) | 24 FPS    | 24 FPS or 48 FPS |
+   | [sync-pattern-2398.mp4](https://matiaspl.github.io/obs-avs/sync-pattern-2398.mp4) | 23.98 FPS | 23.98 FPS (24 FPS NTSC) |
 
    - Choose the video frame rate that is same as player's frame rate or twice of that. For example, if your player (or display) is 60 FPS or 30 FPS such as iPhone, choose 60 FPS. If your player is 59.94 FPS or 29.97 FPS, choose 59.94 FPS.
    - If there are multiple candidates, try to choose the same frame rate as OBS Studio or twice of that.

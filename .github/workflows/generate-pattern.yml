@@ -4,20 +4,12 @@ on:
   push:
     branches: [ main ]
     paths:
-      - 'docs/**'
-      - 'tool/**'
-      - '!**.md'
+      - 'docs/generate-pattern.sh'
   pull_request:
     branches: [ main ]
     paths:
-      - 'docs/**'
-      - 'tool/**'
-      - '!**.md'
+      - 'docs/generate-pattern.sh'
   workflow_dispatch:
-    inputs:
-      deploy:
-        description: Deploy to the web site
-        type: boolean
 
 jobs:
   generate:
@@ -38,34 +30,8 @@ jobs:
         set -e
         ./docs/generate-pattern.sh -outdir _site
 
-    - name: Add web generator
-      run: |
-        set -e
-        cp docs/ntp-cue-generator.html _site/index.html
-        cp docs/ntp-cue-generator.html _site/ntp-cue-generator.html
-        touch _site/.nojekyll
-
-    - name: Upload files as artifact
-      uses: actions/upload-pages-artifact@v3
+    - name: Upload generated media
+      uses: actions/upload-artifact@v4
       with:
+        name: sync-pattern-media
         path: _site/
-
-  deploy:
-    needs: generate
-
-    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.deploy)
-
-    permissions:
-      pages: write
-      id-token: write
-
-    runs-on: ubuntu-latest
-
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
