@@ -419,6 +419,8 @@
 			lastStatusUpdateMs: 0,
 			audioLatencySamples: [],
 			displayAudioLatencySeconds: 0,
+			audioTimingMode: "output",
+			audioOffsetMs: 0,
 			audioTimingLabel: "-",
 			lastAudioSchedule: "-",
 			audioProbeLabel: "pending",
@@ -892,6 +894,13 @@
 			return `${Math.round(ms)} ms`;
 		}
 
+		function audioTimingMode(value) {
+			const normalized = String(value || "").trim().toLowerCase();
+			if (normalized === "output" || normalized === "latency" || normalized === "render")
+				return normalized;
+			return "";
+		}
+
 		function validOutputTimestamp(timestamp, audio) {
 			if (!timestamp || !Number.isFinite(timestamp.contextTime) || !Number.isFinite(timestamp.performanceTime))
 				return false;
@@ -915,20 +924,30 @@
 				return { when: 0, mode: "none" };
 
 			const perfTarget = remoteMsToPerfMs(targetMs);
-			if (typeof audio.getOutputTimestamp === "function") {
+			const offsetSeconds = state.audioOffsetMs / 1000;
+			if (state.audioTimingMode === "render") {
+				return {
+					when: audio.currentTime + (targetMs - remoteNowMs()) / 1000 + offsetSeconds,
+					mode: state.audioOffsetMs ? `render clock ${fmtSignedProgressMs(state.audioOffsetMs)}` : "render clock",
+				};
+			}
+
+			if (state.audioTimingMode === "output" && typeof audio.getOutputTimestamp === "function") {
 				const timestamp = audio.getOutputTimestamp();
 				if (validOutputTimestamp(timestamp, audio)) {
 					return {
-						when: timestamp.contextTime + (perfTarget - timestamp.performanceTime) / 1000,
-						mode: "output timestamp",
+						when: timestamp.contextTime + (perfTarget - timestamp.performanceTime) / 1000 + offsetSeconds,
+						mode: state.audioOffsetMs ? `output timestamp ${fmtSignedProgressMs(state.audioOffsetMs)}` : "output timestamp",
 					};
 				}
 			}
 
 			const latency = audioOutputLatencySeconds();
 			return {
-				when: audio.currentTime + (targetMs - remoteNowMs()) / 1000 - latency,
-				mode: latency > 0 ? "latency estimate" : "render clock",
+				when: audio.currentTime + (targetMs - remoteNowMs()) / 1000 - latency + offsetSeconds,
+				mode: state.audioOffsetMs
+					? `${latency > 0 ? "latency estimate" : "render clock"} ${fmtSignedProgressMs(state.audioOffsetMs)}`
+					: latency > 0 ? "latency estimate" : "render clock",
 			};
 		}
 
@@ -2014,7 +2033,8 @@
 			if (state.audioContext) {
 				el.audioLatency.textContent = `${fmtMs(stableAudioOutputLatencySeconds() * 1000, 2)}`;
 				el.audioTiming.textContent = state.audioTimingLabel;
-				el.audioTiming.className = state.audioTimingLabel === "output timestamp" ? "ok" : "warn";
+				el.audioTiming.className = state.audioTimingLabel.startsWith("output timestamp")
+					|| state.audioTimingMode !== "output" ? "ok" : "warn";
 				el.audioState.textContent = `${state.audioContext.state} ${state.lastAudioSchedule}`;
 				el.audioState.className = state.audioContext.state === "running" ? "ok" : "warn";
 			}
@@ -2151,6 +2171,16 @@
 				const visual = Number(params.get("visual"));
 				if (Number.isFinite(visual))
 					state.visualMs = Math.max(80, visual);
+			}
+			if (params.has("audiotiming")) {
+				const mode = audioTimingMode(params.get("audiotiming"));
+				if (mode)
+					state.audioTimingMode = mode;
+			}
+			if (params.has("audiooffset")) {
+				const offset = Number(params.get("audiooffset"));
+				if (Number.isFinite(offset))
+					state.audioOffsetMs = offset;
 			}
 			if (params.get("audio") === "0")
 				el.audioEnabled.checked = false;
