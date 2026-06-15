@@ -411,6 +411,8 @@
 		const PAYLOAD_SYMBOLS = 5;
 		const PAYLOAD_BASE = DTMF_ROWS.length * DTMF_COLS.length;
 		const ANCHOR_SAMPLE_INTERVAL_MS = 250;
+		const AUDIO_CLOCK_STALL_MS = 200;
+		const AUDIO_CLOCK_QUANTUM_MAX_MS = 400;
 		const ANCHOR_WINDOW = 31;
 		const QR_VERSION = 3;
 		const QR_SIZE = 17 + QR_VERSION * 4;
@@ -476,6 +478,7 @@
 			lastRttMs: 0,
 			lastFrameMs: 0,
 			lastFramePerfMs: 0,
+			lastFrameDeltaMs: 0,
 			frameIntervalMs: 16.7,
 			lastAudioClockSec: 0,
 			audioClockStepMs: 0,
@@ -1318,16 +1321,25 @@
 			return true;
 		}
 
-		/* Track the AudioContext clock's observation granularity: the largest jump
+		/* Track the AudioContext clock's observation granularity: how big a jump
 		 * currentTime makes between frames. On mobile this is coarse (80 ms render
 		 * blocks, frozen ~10 frames then leaping 80-160 ms) -- but it is only how often
 		 * the main thread SEES the clock, not the real scheduling resolution. We use it
 		 * solely to pad the fire lead so the final safety check never trips on a stale
-		 * read; the fire DECISION itself runs on the fine perf clock (see tickAudio). */
+		 * read; the fire DECISION itself runs on the fine perf clock (see tickAudio).
+		 *
+		 * Two guards keep a tab STALL (backgrounding throttles rAF, so currentTime can
+		 * leap by seconds) from being mistaken for clock granularity, which would
+		 * poison the lead and burst-schedule far-future beats:
+		 *   - ignore the sample when the frame interval itself was abnormally long;
+		 *   - clamp the tracked quantum to a sane physical ceiling (render blocks are
+		 *     never more than a fraction of a second).
+		 */
 		function trackAudioClockStep() {
 			const clockSec = state.audioContext.currentTime;
-			if (state.lastAudioClockSec) {
-				const stepMs = (clockSec - state.lastAudioClockSec) * 1000;
+			const frameOk = state.lastFrameDeltaMs > 0 && state.lastFrameDeltaMs < AUDIO_CLOCK_STALL_MS;
+			if (state.lastAudioClockSec && frameOk) {
+				const stepMs = Math.min((clockSec - state.lastAudioClockSec) * 1000, AUDIO_CLOCK_QUANTUM_MAX_MS);
 				/* Ratchet up instantly, relax very slowly: hold the observed max so a
 				 * run of frozen frames can't drop it below the next leap, but recover
 				 * (~12 s) if the device moves to a lower-latency sink. */
@@ -1944,11 +1956,9 @@
 			 * only honest headroom on a deadline is the gap until the next frame --
 			 * measured here, not a chosen constant. EMA so one stutter doesn't spike it. */
 			const perfNow = performance.now();
-			if (state.lastFramePerfMs) {
-				const dt = perfNow - state.lastFramePerfMs;
-				if (dt > 0 && dt < 200)
-					state.frameIntervalMs = state.frameIntervalMs * 0.9 + dt * 0.1;
-			}
+			state.lastFrameDeltaMs = state.lastFramePerfMs ? perfNow - state.lastFramePerfMs : 0;
+			if (state.lastFrameDeltaMs > 0 && state.lastFrameDeltaMs < 200)
+				state.frameIntervalMs = state.frameIntervalMs * 0.9 + state.lastFrameDeltaMs * 0.1;
 			state.lastFramePerfMs = perfNow;
 
 			/* Single heartbeat: resample the submit-clock anchor and fire the next
