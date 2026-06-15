@@ -317,7 +317,7 @@
 
 	<aside class="panel">
 		<h1>AVS Cue Generator</h1>
-		<p class="tagline">Audio and video are emitted in sync at submit time and left to their natural device latencies — no latency guessing. One display-trim per device absorbs the screen-vs-speaker skew.</p>
+		<p class="tagline">Audio is placed so the marker leaves the speaker on target, using the measured output-timestamp gap (or submit-synced where the browser can't report it). One display-trim per device absorbs the remaining screen latency.</p>
 
 		<div class="row">
 			<button id="startBtn" class="primary">Start</button>
@@ -355,7 +355,7 @@
 					<button id="trimUp" type="button" title="Flip video later">+</button>
 				</div>
 			</div>
-			<p class="hint">Audio and video leave the device with their own hardware latencies, which we do not try to measure. Set this trim once per device so the observed A/V offset reads ~0: raise it if video lands late, lower it if early. Saved on this device.</p>
+			<p class="hint">Audio output latency is measured and compensated automatically (see Audio anchor). This trim absorbs only the remaining screen latency, which we can't measure. Set it once per device so the observed A/V offset reads ~0: raise it if video lands late, lower it if early. Saved on this device.</p>
 		</div>
 
 		<div class="group status">
@@ -413,6 +413,11 @@
 		const ANCHOR_SAMPLE_INTERVAL_MS = 250;
 		const AUDIO_CLOCK_STALL_MS = 200;
 		const AUDIO_CLOCK_QUANTUM_MAX_MS = 400;
+		/* Plausible ceiling for a measured submit->speaker output gap. Above this we
+		 * treat the reading as bogus and fall back to submit-synced rather than push
+		 * the fire lead toward a full period. (Bluetooth can exceed this; there the
+		 * trim carries it, same as the no-API path.) */
+		const AUDIO_GAP_MAX_MS = 500;
 		const ANCHOR_WINDOW = 31;
 		const QR_VERSION = 3;
 		const QR_SIZE = 17 + QR_VERSION * 4;
@@ -488,6 +493,10 @@
 			audioAnchor: 0,
 			anchorSamples: [],
 			anchorValid: false,
+			/* Measured submit->speaker output gap (getOutputTimestamp), smoothed. */
+			audioGapMs: 0,
+			audioGapSamples: [],
+			audioGapValid: false,
 			lastAudioSchedule: "-",
 			audioProbeLabel: "pending",
 			audioProbeClass: "warn",
@@ -934,19 +943,21 @@
 		 *
 		 *   alpha = currentTime - now/1000
 		 *
-		 * We deliberately do NOT compensate for output (speaker) latency. We can't
-		 * measure it portably -- getOutputTimestamp is desktop-only and the reported
-		 * baseLatency/outputLatency can't be trusted (Bluetooth is wildly under-
-		 * reported) -- and compensating it on only some platforms would make the
-		 * generator's own A/V skew differ per device, which is fatal for a reference.
+		 * On top of the submit anchor we measure the OUTPUT gap -- the delay from
+		 * submitting a sample to it leaving the speaker -- using getOutputTimestamp:
 		 *
-		 * So we treat audio and video as already in sync at submit time and let them
-		 * emerge with their natural device latencies. The remaining skew is just
-		 *   display_latency - audio_output_latency
-		 * a single physical constant per device, absorbed by the one video trim.
-		 * (For the common internal speaker + internal screen case the two latencies
-		 * partially cancel, so this is usually smaller than compensating either one.)
-		 * Median smoothing only tracks slow clock drift between the two timebases.
+		 *   gap = currentTime - outputTimestamp.contextTime
+		 *
+		 * This is MEASURED, not the reported baseLatency/outputLatency (which can't be
+		 * trusted). Where the API gives a valid timestamp (desktop + most modern
+		 * Android Chrome) we subtract the smoothed gap from the buffer start so the
+		 * marker center leaves the SPEAKER on the target, not just the submit clock.
+		 * That removes the dominant term (measured ~334 ms on a Motorola Edge 20 Pro),
+		 * leaving only display latency (~100 ms) for the one video trim to absorb.
+		 *
+		 * Where getOutputTimestamp is absent/invalid (some iOS/Safari), gap stays 0 and
+		 * we fall back to pure submit-synced: audio then lands one output-latency late
+		 * and the trim carries the whole skew. The status row shows which path is live.
 		 */
 		function sampleAudioAnchor() {
 			const audio = state.audioContext;
@@ -963,6 +974,24 @@
 			const pool = state.anchorSamples.slice().sort((a, b) => a - b);
 			state.audioAnchor = pool[Math.floor(pool.length / 2)];
 			state.anchorValid = true;
+
+			/* Measured submit->speaker gap. Validate the timestamp the same way we
+			 * vet the anchor: finite, contemporaneous, and a physically sane latency
+			 * (0..AUDIO_GAP_MAX_MS). Median-smoothed so a stray reading can't jump it. */
+			if (typeof audio.getOutputTimestamp === "function") {
+				const ts = audio.getOutputTimestamp();
+				if (ts && Number.isFinite(ts.contextTime) && ts.contextTime > 0) {
+					const gapMs = (audio.currentTime - ts.contextTime) * 1000;
+					if (gapMs >= 0 && gapMs <= AUDIO_GAP_MAX_MS) {
+						state.audioGapSamples.push(gapMs);
+						if (state.audioGapSamples.length > ANCHOR_WINDOW)
+							state.audioGapSamples.shift();
+						const gpool = state.audioGapSamples.slice().sort((a, b) => a - b);
+						state.audioGapMs = gpool[Math.floor(gpool.length / 2)];
+						state.audioGapValid = true;
+					}
+				}
+			}
 		}
 
 		function fmtLead(ms) {
@@ -1285,19 +1314,19 @@
 		 * Realtime audio fire. There is no schedule queue: every animation frame we
 		 * ask "is the next beat due to start?" and, if so, fire it once. Like a game
 		 * telegraphing an attack -- start the windup the moment it must begin so the
-		 * hit lands on the beat.
-		 *
-		 * The buffer-start context time is the SAME sample-accurate value placement
-		 * uses, so the scheduling deadline is just "is this start time still in the
-		 * future?" -- no latency guess anywhere. source.start(when) is sample-exact;
-		 * the marker center lands on the beat regardless of how early we call it.
+		 * hit lands on the beat. source.start(when) is sample-exact, so the marker
+		 * center lands precisely regardless of how early we call it.
 		 */
 		function audioStartContextTime(targetMs) {
-			/* The marker center must be submitted at targetMs; the buffer's first
-			 * sample is therefore submitted (preroll + half marker) earlier. The anchor
-			 * maps that submit instant to a context start time. */
+			/* The marker center must leave the SPEAKER at targetMs. Working backwards:
+			 * the center is (preroll + half marker) into the packet, and the whole
+			 * packet takes `gap` to travel from submit clock to speaker. So the buffer
+			 * must be submitted (preroll + half + gap) before the target. The anchor
+			 * maps that submit instant to a context start time. When gap is 0 (API
+			 * unavailable) this degrades to pure submit-synced. */
 			const centerPerfMs = remoteMsToPerfMs(targetMs);
-			const startSubmitPerfMs = centerPerfMs - AUDIO_PREROLL_MS - MARKER_MS * 0.5;
+			const gapMs = state.audioGapValid ? state.audioGapMs : 0;
+			const startSubmitPerfMs = centerPerfMs - AUDIO_PREROLL_MS - MARKER_MS * 0.5 - gapMs;
 			return state.audioAnchor + startSubmitPerfMs / 1000;
 		}
 
@@ -1364,9 +1393,13 @@
 
 			trackAudioClockStep();
 			const period = Math.max(1000, readNumber(el.periodMs, 3000));
-			/* Perf-clock instant the buffer must begin, minus a quantum+frame so the
-			 * sample-accurate start time stays ahead of the coarsely-observed clock. */
-			const leadMs = AUDIO_PREROLL_MS + MARKER_MS * 0.5 + state.audioClockStepMs + state.frameIntervalMs;
+			const gapMs = state.audioGapValid ? state.audioGapMs : 0;
+			/* The buffer must begin (preroll + half + output gap) before the target so
+			 * the marker leaves the speaker on time. That instant is the hard deadline. */
+			const bufferStartBeforeMs = AUDIO_PREROLL_MS + MARKER_MS * 0.5 + gapMs;
+			/* Fire a quantum+frame earlier than the deadline so the sample-accurate
+			 * start time stays ahead of the coarsely-observed currentTime at start(). */
+			const leadMs = bufferStartBeforeMs + state.audioClockStepMs + state.frameIntervalMs;
 
 			/* The target is the next beat strictly after the one we last fired;
 			 * on the first beat (or after a stall) start from the boundary at `now`. */
@@ -1376,7 +1409,7 @@
 			/* Advance past any beat we can no longer start in time. A beat is only a
 			 * real miss if its own instant is still ahead (a genuine stall); otherwise
 			 * we are just seeking past startup. */
-			while (now > target - AUDIO_PREROLL_MS - MARKER_MS * 0.5) {
+			while (now > target - bufferStartBeforeMs) {
 				if (now < target && target !== state.lastBeatTargetMs) {
 					state.lastAudioSchedule = `missed beat seq=${sequenceForTarget(target) & 0xff}`;
 					log(state.lastAudioSchedule);
@@ -2034,13 +2067,14 @@
 				el.wakeStatus.className = "";
 			}
 
-			el.audioAnchor.textContent = `submit-synced · video ${fmtSignedProgressMs(state.videoTrimMs)}`;
+			const mode = state.audioGapValid ? "speaker-synced" : "submit-synced";
+			el.audioAnchor.textContent = `${mode} · video ${fmtSignedProgressMs(state.videoTrimMs)}`;
 			el.audioAnchor.className = state.anchorValid ? "ok" : "";
 
 			if (state.audioContext) {
-				el.audioLatency.textContent = state.audioClockStepMs > 0
-					? `clock step ${Math.round(state.audioClockStepMs)} ms · not compensated`
-					: "not compensated (use trim)";
+				el.audioLatency.textContent = state.audioGapValid
+					? `output ${Math.round(state.audioGapMs)} ms compensated`
+					: "output gap unknown · use trim";
 				el.audioState.textContent = `${state.audioContext.state} ${state.lastAudioSchedule}`;
 				el.audioState.className = state.audioContext.state === "running" ? "ok" : "warn";
 			}
@@ -2077,6 +2111,8 @@
 			/* Seed the anchor immediately so the first beat can fire. */
 			state.anchorSamples = [];
 			state.anchorValid = false;
+			state.audioGapSamples = [];
+			state.audioGapValid = false;
 			sampleAudioAnchor();
 
 			try {
@@ -2128,6 +2164,8 @@
 			state.syncTimer = 0;
 			state.anchorSamples = [];
 			state.anchorValid = false;
+			state.audioGapSamples = [];
+			state.audioGapValid = false;
 			state.lastBeatTargetMs = 0;
 			state.lastFiredSequence = -1;
 			state.lastAudioSchedule = "-";
