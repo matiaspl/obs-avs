@@ -15,6 +15,19 @@ media. Using OBS encoder PTS and compositor CTS keeps the measurement on the
 actual mixed output timeline instead of trusting timestamps supplied by an
 individual source.
 
+The original implementation gathered raw Program buffers along the path
+`sources -> Program composition/audio mix -> raw output callbacks -> detector`.
+Although this provided the mixed audio and video, their timestamps could still
+reflect upstream source scheduling because the buffers did not pass through
+OBS's encoder start-pairing and timestamp-correction path. The current approach
+instead follows `sources -> Program composition/audio mix -> paired analyzer
+encoders -> detector`: OBS aligns audio Track 1 with the first Program video
+frame and gives both streams a common, zero-based PTS timeline. The detector
+uses those frame and sample PTS values for relative A/V offset, while the video
+composition timestamp (CTS) is mapped to the system clock only for end-to-end
+latency. The analyzer emits and immediately discards one-byte packets, so it
+uses OBS's "encoded" signal flow without compressing or writing any media.
+
 ## Motivation behind the fork
 
 The v2 AV offset workflow for repeatable relative AV sync checks
