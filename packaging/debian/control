@@ -1,7 +1,7 @@
 Source: audio-video-sync-dock-plugin-for-obs
 Section: video
 Priority: optional
-Maintainer: Norihiro Kamae <norihiro-ppa-plugins-for-obs-studio@nagater.net>
+Maintainer: Mateusz Starzak <mstarzak@gmail.com>
 Rules-Requires-Root: no
 Build-Depends:
  debhelper-compat (= 13),
@@ -12,7 +12,7 @@ Build-Depends:
  libxcb1-dev, libx11-xcb-dev, libwayland-dev, libglvnd-dev
 Conflicts: obs-audio-video-sync-dock
 Standards-Version: 4.6.2
-Homepage: https://github.com/norihiro/obs-audio-video-sync-dock
+Homepage: https://github.com/matiaspl/obs-avs
 
 Package: audio-video-sync-dock-plugin-for-obs
 Architecture: any
@@ -21,4 +21,3 @@ Depends:
  ${shlibs:Depends},
  ${misc:Depends},
 Description: plugin to help measuring audio and video latency on OBS Studio
-

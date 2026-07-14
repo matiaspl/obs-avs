@@ -3,4 +3,4 @@ audio-video-sync-dock-plugin-for-obs (%VERSION%-1~%DISTRIBUTION%) %DISTRIBUTION%
   [ Norihiro Kamae ]
   * Initial release.
 
- -- Norihiro Kamae (PPA) <norihiro-ppa-plugins-for-obs-studio@nagater.net>  %DATE%
+ -- Mateusz Starzak <mstarzak@gmail.com>  %DATE%

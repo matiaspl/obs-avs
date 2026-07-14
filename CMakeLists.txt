@@ -1,17 +1,23 @@
 cmake_minimum_required(VERSION 3.12)
 
-project(obs-audio-video-sync-dock VERSION 2.1.0)
+project(
+	obs-audio-video-sync-dock
+	VERSION 2.1.0
+	DESCRIPTION "AV Sync and Latency Dock"
+	HOMEPAGE_URL "https://github.com/matiaspl/obs-avs"
+)
 
-set(PLUGIN_AUTHOR "Norihiro Kamae")
+set(PLUGIN_AUTHOR "Mateusz Starzak")
+set(PLUGIN_NAME "${PROJECT_DESCRIPTION}")
 
 set(MACOS_BUNDLEID "net.nagater.obs-audio-video-sync-dock")
 set(ID_PREFIX "net.nagater.obs-audio-video-sync-dock.")
 set(MACOS_PACKAGE_UUID "10FED78A-2D7F-494B-A7B0-780280CB09B8")
 set(MACOS_INSTALLER_UUID "C0ADE8B3-B56D-4328-BEAF-0A967FED280B")
-set(PLUGIN_URL "https://github.com/norihiro/obs-audio-video-sync-dock/")
+set(PLUGIN_URL "${PROJECT_HOMEPAGE_URL}")
 set(WIN_INSTALLER_UUID "C379B62A-A937-4808-B143-A4D4D454A2CC")
 
-set(LINUX_MAINTAINER_EMAIL "norihiro@nagater.net")
+set(LINUX_MAINTAINER_EMAIL "mstarzak@gmail.com")
 
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTOUIC ON)
@@ -107,6 +113,7 @@ if(APPLE)
 	set(LICENSE_DESTINATION "${PROJECT_NAME}.plugin/Contents/Resources")
 
 	set_target_properties(${PROJECT_NAME} PROPERTIES PREFIX "")
+	set(MACOSX_PLUGIN_BUNDLE_NAME "${PLUGIN_NAME}")
 	set(MACOSX_PLUGIN_GUI_IDENTIFIER "${MACOS_BUNDLEID}")
 	set(MACOSX_PLUGIN_BUNDLE_VERSION "${PROJECT_VERSION}")
 	set(MACOSX_PLUGIN_SHORT_VERSION_STRING "${PROJECT_VERSION}")

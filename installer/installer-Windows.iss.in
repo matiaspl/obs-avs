@@ -1,4 +1,4 @@
-#define MyAppName "@PROJECT_NAME@"
+#define MyAppName "@PLUGIN_NAME@"
 #define MyAppVersion "@PROJECT_VERSION@"
 #define MyAppPublisher "@PLUGIN_AUTHOR@"
 #define MyAppURL "@PLUGIN_URL@"
@@ -57,4 +57,3 @@ begin
   if RegQueryStringValue(HKLM32, 'SOFTWARE\OBS Studio', '', InstallPath) then
     Result := InstallPath
 end;
-
