@@ -2,6 +2,12 @@ name: Plugin Build
 
 on:
   workflow_dispatch:
+    inputs:
+      sign_macos:
+        description: Require Developer ID signing for the macOS artifacts
+        required: true
+        type: boolean
+        default: true
   push:
     paths-ignore:
       - '**.md'
@@ -78,6 +84,10 @@ jobs:
 
   macos_build:
     runs-on: macos-14
+    env:
+      MACOS_SIGNING_REQUESTED: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.sign_macos) }}
+      MACOS_SIGNING_REQUIRED: ${{ github.event_name == 'workflow_dispatch' && inputs.sign_macos }}
+      MACOS_NOTARIZATION_REQUESTED: ${{ startsWith(github.ref, 'refs/tags/') }}
     strategy:
       fail-fast: false
       matrix:
@@ -94,18 +104,54 @@ jobs:
 
       - name: Setup Environment
         id: setup
+        env:
+          MACOS_SIGNING_APPLICATION_IDENTITY: ${{ secrets.MACOS_SIGNING_APPLICATION_IDENTITY }}
+          MACOS_SIGNING_INSTALLER_IDENTITY: ${{ secrets.MACOS_SIGNING_INSTALLER_IDENTITY }}
+          MACOS_SIGNING_CERT: ${{ secrets.MACOS_SIGNING_CERT }}
+          MACOS_SIGNING_CERT_PASSWORD: ${{ secrets.MACOS_SIGNING_CERT_PASSWORD }}
+          MACOS_NOTARIZATION_USERNAME: ${{ secrets.MACOS_NOTARIZATION_USERNAME }}
+          MACOS_NOTARIZATION_PASSWORD: ${{ secrets.MACOS_NOTARIZATION_PASSWORD }}
+          MACOS_TEAM_ID: ${{ secrets.MACOS_TEAM_ID }}
         run: |
           set -e
           echo '::group::Set up code signing'
-          if [[ '${{ secrets.MACOS_SIGNING_APPLICATION_IDENTITY }}' != '' && \
-                '${{ secrets.MACOS_SIGNING_INSTALLER_IDENTITY }}' != '' && \
-                '${{ secrets.MACOS_SIGNING_CERT }}' != '' ]]; then
+          signing_secrets=(
+            MACOS_SIGNING_APPLICATION_IDENTITY
+            MACOS_SIGNING_INSTALLER_IDENTITY
+            MACOS_SIGNING_CERT
+            MACOS_SIGNING_CERT_PASSWORD
+          )
+          missing_signing_secrets=()
+          for name in "${signing_secrets[@]}"; do
+            if [[ -z "${!name}" ]]; then
+              missing_signing_secrets+=("$name")
+            fi
+          done
+
+          if (( ${#missing_signing_secrets[@]} == 0 )); then
             echo "haveCodesignIdent=true" >> $GITHUB_OUTPUT
           else
             echo "haveCodesignIdent=false" >> $GITHUB_OUTPUT
+            if [[ "$MACOS_SIGNING_REQUIRED" == 'true' ]]; then
+              printf '::error::Required macOS signing secret is not configured: %s\n' \
+                "${missing_signing_secrets[@]}"
+              exit 1
+            fi
           fi
-          if [[ '${{ secrets.MACOS_NOTARIZATION_USERNAME }}' != '' && \
-                '${{ secrets.MACOS_NOTARIZATION_PASSWORD }}' != '' ]]; then
+
+          notarization_secrets=(
+            MACOS_NOTARIZATION_USERNAME
+            MACOS_NOTARIZATION_PASSWORD
+            MACOS_TEAM_ID
+          )
+          missing_notarization_secrets=()
+          for name in "${notarization_secrets[@]}"; do
+            if [[ -z "${!name}" ]]; then
+              missing_notarization_secrets+=("$name")
+            fi
+          done
+
+          if (( ${#missing_notarization_secrets[@]} == 0 )); then
             echo "haveNotarizationUser=true" >> $GITHUB_OUTPUT
           else
             echo "haveNotarizationUser=false" >> $GITHUB_OUTPUT
@@ -113,22 +159,25 @@ jobs:
           echo '::endgroup::'
 
       - name: Install Apple Developer Certificate
-        if: ${{ github.event_name != 'pull_request' && steps.setup.outputs.haveCodesignIdent == 'true' }}
-        uses: apple-actions/import-codesign-certs@63fff01cd422d4b7b855d40ca1e9d34d2de9427d # v3.0.0
+        if: ${{ env.MACOS_SIGNING_REQUESTED == 'true' && steps.setup.outputs.haveCodesignIdent == 'true' }}
+        uses: apple-actions/import-codesign-certs@5142e029c445c10ffc7149d172e540235a065466 # v7.0.0
         with:
           keychain-password: ${{ github.run_id }}
           p12-file-base64: ${{ secrets.MACOS_SIGNING_CERT }}
           p12-password: ${{ secrets.MACOS_SIGNING_CERT_PASSWORD }}
 
-      - name: Set Signing Identity
-        if: ${{ startsWith(github.ref, 'refs/tags/') && github.event_name != 'pull_request' && steps.setup.outputs.haveCodesignIdent == 'true' && steps.setup.outputs.haveNotarizationUser == 'true' }}
+      - name: Set up notarization credentials
+        if: ${{ env.MACOS_NOTARIZATION_REQUESTED == 'true' && steps.setup.outputs.haveNotarizationUser == 'true' }}
+        env:
+          MACOS_NOTARIZATION_USERNAME: ${{ secrets.MACOS_NOTARIZATION_USERNAME }}
+          MACOS_NOTARIZATION_PASSWORD: ${{ secrets.MACOS_NOTARIZATION_PASSWORD }}
+          MACOS_TEAM_ID: ${{ secrets.MACOS_TEAM_ID }}
         run: |
           set -e
-          TEAM_ID=$(echo "${{ secrets.MACOS_SIGNING_APPLICATION_IDENTITY }}" | sed 's/.*(\([A-Za-z0-9]*\))$/\1/')
           xcrun notarytool store-credentials AC_PASSWORD \
-            --apple-id "${{ secrets.MACOS_NOTARIZATION_USERNAME }}" \
-            --team-id "$TEAM_ID" \
-            --password "${{ secrets.MACOS_NOTARIZATION_PASSWORD }}"
+            --apple-id "$MACOS_NOTARIZATION_USERNAME" \
+            --team-id "$MACOS_TEAM_ID" \
+            --password "$MACOS_NOTARIZATION_PASSWORD"
 
       - name: Download obs-studio development environment
         id: obsdeps
@@ -141,19 +190,26 @@ jobs:
           qt: ${{ env.qt }}
 
       - name: Build plugin
+        env:
+          MACOS_SIGNING_APPLICATION_IDENTITY: ${{ secrets.MACOS_SIGNING_APPLICATION_IDENTITY }}
         run: |
           arch=${{ matrix.arch }}
           deps=/tmp/deps-${{ matrix.obs }}-${{ matrix.arch }}
           MACOSX_DEPLOYMENT_TARGET=${{ steps.obsdeps.outputs.MACOSX_DEPLOYMENT_TARGET }}
           GIT_TAG=$(git describe --tags --always)
           PKG_SUFFIX=-${GIT_TAG}-obs${{ matrix.obs }}-macos-${{ matrix.arch }}
+          codesign_identity=-
+          if [[ "$MACOS_SIGNING_REQUESTED" == 'true' && \
+                '${{ steps.setup.outputs.haveCodesignIdent }}' == 'true' ]]; then
+            codesign_identity="$MACOS_SIGNING_APPLICATION_IDENTITY"
+          fi
           set -e
           cmake -S . -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=RelWithDebInfo \
             -DCMAKE_PREFIX_PATH="$PWD/release/" \
             -DCMAKE_OSX_ARCHITECTURES=${arch/#universal/x86_64;arm64} \
             -D PKG_SUFFIX=$PKG_SUFFIX \
-            -D OBS_BUNDLE_CODESIGN_IDENTITY='${{ secrets.MACOS_SIGNING_APPLICATION_IDENTITY }}' \
+            -D OBS_BUNDLE_CODESIGN_IDENTITY="$codesign_identity" \
             ${{ steps.obsdeps.outputs.PLUGIN_CMAKE_OPTIONS }}
           cmake --build build --config RelWithDebInfo
 
@@ -164,20 +220,23 @@ jobs:
           cmake --install build --config RelWithDebInfo --prefix=release
 
       - name: Codesign
-        if: ${{ github.event_name != 'pull_request' && steps.setup.outputs.haveCodesignIdent == 'true' }}
+        if: ${{ env.MACOS_SIGNING_REQUESTED == 'true' && steps.setup.outputs.haveCodesignIdent == 'true' }}
+        env:
+          MACOS_SIGNING_APPLICATION_IDENTITY: ${{ secrets.MACOS_SIGNING_APPLICATION_IDENTITY }}
         run: |
           . build/ci/ci_includes.generated.sh
-          set -ex
-          files=(
-            $(find release/${PLUGIN_NAME}.plugin/ -name '*.dylib')
-            release/${PLUGIN_NAME}.plugin/Contents/MacOS/${PLUGIN_NAME}
-          )
-          for dylib in "${files[@]}"; do
-            codesign --force --sign "${{ secrets.MACOS_SIGNING_APPLICATION_IDENTITY }}" "$dylib"
-          done
-          for dylib in "${files[@]}"; do
-            codesign -vvv --deep --strict "$dylib"
-          done
+          set -e
+          plugin_bundle="release/${PLUGIN_NAME}.plugin"
+
+          while IFS= read -r -d '' dylib; do
+            codesign --force --options runtime --timestamp \
+              --sign "$MACOS_SIGNING_APPLICATION_IDENTITY" "$dylib"
+          done < <(find "$plugin_bundle" -type f -name '*.dylib' -print0)
+
+          codesign --force --options runtime --timestamp \
+            --entitlements cmake/bundle/macos/entitlements.plist \
+            --sign "$MACOS_SIGNING_APPLICATION_IDENTITY" "$plugin_bundle"
+          codesign --verify --deep --strict --verbose=4 "$plugin_bundle"
 
       - name: Package
         run: |
@@ -192,21 +251,30 @@ jobs:
             build/installer-macOS.generated.pkgproj
 
       - name: Productsign
-        if: ${{ github.event_name != 'pull_request' && steps.setup.outputs.haveCodesignIdent == 'true' }}
+        if: ${{ env.MACOS_SIGNING_REQUESTED == 'true' && steps.setup.outputs.haveCodesignIdent == 'true' }}
+        env:
+          MACOS_SIGNING_INSTALLER_IDENTITY: ${{ secrets.MACOS_SIGNING_INSTALLER_IDENTITY }}
         run: |
           . build/ci/ci_includes.generated.sh
           pkgfile=package/${PLUGIN_NAME}${PKG_SUFFIX}.pkg
           set -e
-          productsign --sign "${{ secrets.MACOS_SIGNING_INSTALLER_IDENTITY }}" $pkgfile package/${PLUGIN_NAME}-signed.pkg
+          productsign --sign "$MACOS_SIGNING_INSTALLER_IDENTITY" $pkgfile package/${PLUGIN_NAME}-signed.pkg
           mv package/${PLUGIN_NAME}-signed.pkg $pkgfile
+          pkgutil --check-signature "$pkgfile"
 
       - name: Notarize
-        if: ${{ startsWith(github.ref, 'refs/tags/') && github.event_name != 'pull_request' && steps.setup.outputs.haveCodesignIdent == 'true' }}
-        uses: norihiro/macos-notarize-action@v1
-        with:
-          path: package/*
-          keychainProfile: AC_PASSWORD
-          verbose: true
+        if: ${{ env.MACOS_NOTARIZATION_REQUESTED == 'true' && steps.setup.outputs.haveCodesignIdent == 'true' && steps.setup.outputs.haveNotarizationUser == 'true' }}
+        run: |
+          . build/ci/ci_includes.generated.sh
+          set -e
+          pkgfile="package/${PLUGIN_NAME}${PKG_SUFFIX}.pkg"
+          zipfile="package/${PLUGIN_NAME}${PKG_SUFFIX}.zip"
+
+          xcrun notarytool submit "$pkgfile" --keychain-profile AC_PASSWORD --wait
+          xcrun notarytool submit "$zipfile" --keychain-profile AC_PASSWORD --wait
+          xcrun stapler staple "$pkgfile"
+          xcrun stapler validate "$pkgfile"
+          spctl --assess --type install --verbose=4 "$pkgfile"
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4

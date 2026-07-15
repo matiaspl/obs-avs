@@ -52,6 +52,62 @@ the later DTMF/CRC payload only pairs the correct events. It is less visually
 intrusive and easier to capture, while still measuring relative AV offset rather
 than true source-to-capture latency.
 
+## Installing an unsigned build on macOS
+
+The current macOS release artifacts are not signed with an Apple Developer ID
+or notarized. macOS may therefore block the PKG installer or prevent OBS from
+loading the plugin. Only override this protection for an artifact downloaded
+from this project's [official GitHub Releases page](https://github.com/matiaspl/obs-avs/releases)
+that you trust.
+
+First try the PKG once. If macOS reports that the developer cannot be verified
+or that Apple cannot check it for malicious software, open **System Settings >
+Privacy & Security**, scroll to **Security**, and use **Open Anyway**. The
+button is normally available for about an hour after the blocked attempt; see
+[Apple's instructions](https://support.apple.com/guide/mac-help/mh40617/mac)
+for the current macOS procedure.
+
+If the PKG remains blocked, install the ZIP manually:
+
+1. Quit OBS completely. A running OBS process keeps the old plugin binary
+   loaded.
+2. Download the macOS ZIP matching the installed OBS major version, then
+   double-click it to unpack `obs-avs.plugin`.
+3. In Finder, choose **Go > Go to Folder** and enter
+   `~/Library/Application Support/obs-studio/plugins`.
+4. If upgrading from a build named `obs-audio-video-sync-dock`, remove its old
+   `.plugin` bundle first so OBS does not load both copies. Check the user path
+   above and `/Library/Application Support/obs-studio/plugins` for a legacy
+   bundle.
+5. Create the `plugins` folder if it does not exist, then copy
+   `obs-avs.plugin` into it. Replace the existing bundle when
+   upgrading.
+6. Start OBS again.
+
+The same copy can be performed in Terminal after unpacking the ZIP in
+`~/Downloads`:
+
+```sh
+PLUGIN="$HOME/Library/Application Support/obs-studio/plugins/obs-avs.plugin"
+mkdir -p "$HOME/Library/Application Support/obs-studio/plugins"
+ditto "$HOME/Downloads/obs-avs.plugin" "$PLUGIN"
+```
+
+If OBS still cannot load the plugin and the downloaded bundle has a quarantine
+attribute, remove only that attribute from this plugin bundle, then restart
+OBS:
+
+```sh
+PLUGIN="$HOME/Library/Application Support/obs-studio/plugins/obs-avs.plugin"
+xattr -lr "$PLUGIN"
+xattr -dr com.apple.quarantine "$PLUGIN"
+```
+
+Removing quarantine bypasses a macOS security check. Do not run this for a
+bundle obtained from another source, do not clear attributes globally, and do
+not disable Gatekeeper. If macOS says the plugin **will damage your computer**,
+delete the download instead of overriding the warning.
+
 ## How to use
 
 Use the MOV clip workflow when you only need relative audio/video offset
@@ -178,4 +234,6 @@ Related background: [A random stackexchange post](https://dsp.stackexchange.com/
 
 
 ## Build flow
-See [main.yml](.github/workflows/main.yml) for the exact build flow.
+See [main.yml](.github/workflows/main.yml) for the exact build flow. Maintainers
+can configure Developer ID signing and notarization using the
+[release-signing guide](docs/release-signing.md).

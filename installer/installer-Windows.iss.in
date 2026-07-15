@@ -25,6 +25,12 @@ Source: "..\release\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs cr
 Source: "..\LICENSE"; Flags: dontcopy
 ; NOTE: Don't use "Flags: ignoreversion" on any shared system files
 
+[InstallDelete]
+; Remove files installed before the obs-avs rename so OBS cannot load both plugins.
+Type: files; Name: "{app}\obs-plugins\64bit\obs-audio-video-sync-dock.dll"
+Type: files; Name: "{app}\obs-plugins\64bit\obs-audio-video-sync-dock.pdb"
+Type: filesandordirs; Name: "{app}\data\obs-plugins\obs-audio-video-sync-dock"
+
 [Icons]
 Name: "{group}\{cm:ProgramOnTheWeb,{#MyAppName}}"; Filename: "{#MyAppURL}"
 Name: "{group}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"

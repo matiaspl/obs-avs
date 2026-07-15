@@ -10,6 +10,7 @@ Build-Depends:
  libsimde-dev,
  qt6-base-dev, qt6-base-private-dev, libqt6svg6-dev, qt6-wayland,
  libxcb1-dev, libx11-xcb-dev, libwayland-dev, libglvnd-dev
+# Compatibility with packages produced before the obs-avs rename.
 Conflicts: obs-audio-video-sync-dock
 Standards-Version: 4.6.2
 Homepage: https://github.com/matiaspl/obs-avs

@@ -25,7 +25,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #include "plugin-macros.generated.h"
 
 #if LIBOBS_API_VER < MAKE_SEMANTIC_VERSION(31, 0, 0)
-#error "obs-audio-video-sync-dock requires OBS Studio 31 or newer"
+#error "obs-avs requires OBS Studio 31 or newer"
 #endif
 
 OBS_DECLARE_MODULE()

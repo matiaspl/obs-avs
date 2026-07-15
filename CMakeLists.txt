@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.12)
 
 project(
-	obs-audio-video-sync-dock
-	VERSION 2.1.0
+	obs-avs
+	VERSION 2.2.0
 	DESCRIPTION "AV Sync and Latency Dock"
 	HOMEPAGE_URL "https://github.com/matiaspl/obs-avs"
 )
@@ -10,12 +10,12 @@ project(
 set(PLUGIN_AUTHOR "Mateusz Starzak")
 set(PLUGIN_NAME "${PROJECT_DESCRIPTION}")
 
-set(MACOS_BUNDLEID "net.nagater.obs-audio-video-sync-dock")
-set(ID_PREFIX "net.nagater.obs-audio-video-sync-dock.")
-set(MACOS_PACKAGE_UUID "10FED78A-2D7F-494B-A7B0-780280CB09B8")
-set(MACOS_INSTALLER_UUID "C0ADE8B3-B56D-4328-BEAF-0A967FED280B")
+set(MACOS_BUNDLEID "com.broadcast-ready.obs-avs")
+set(ID_PREFIX "com.broadcast-ready.obs-avs.")
+set(MACOS_PACKAGE_UUID "957CC81B-4852-4864-BFAB-47E7B9EF62C6")
+set(MACOS_INSTALLER_UUID "8FFF83FC-6724-4FD6-95AB-A04C56568A6B")
 set(PLUGIN_URL "${PROJECT_HOMEPAGE_URL}")
-set(WIN_INSTALLER_UUID "C379B62A-A937-4808-B143-A4D4D454A2CC")
+set(WIN_INSTALLER_UUID "C51F322C-EE44-4F00-B185-C187EEF07A92")
 
 set(LINUX_MAINTAINER_EMAIL "mstarzak@gmail.com")
 

@@ -20,16 +20,16 @@
 
 namespace {
 
-constexpr const char *kOutputId = "net.nagater.obs-audio-video-sync-dock.output";
-constexpr const char *kVideoAnalyzerEncoderId = "net.nagater.obs-audio-video-sync-dock.video-analyzer";
-constexpr const char *kAudioAnalyzerEncoderId = "net.nagater.obs-audio-video-sync-dock.audio-analyzer";
+constexpr const char *kOutputId = "com.broadcast-ready.obs-avs.output";
+constexpr const char *kVideoAnalyzerEncoderId = "com.broadcast-ready.obs-avs.video-analyzer";
+constexpr const char *kAudioAnalyzerEncoderId = "com.broadcast-ready.obs-avs.audio-analyzer";
 
 struct Options
 {
 	std::string media_path = "release/av-offset-pattern-3000.mp4";
 	std::string browser_url;
 	std::string obs_root = "/Users/mstarzak/work/obs-studio-32.1.2";
-	std::string plugin_root = "release-obs-32.1.2/obs-audio-video-sync-dock.plugin";
+	std::string plugin_root = "release-obs-32.1.2/obs-avs.plugin";
 	int width = 1280;
 	int height = 720;
 	int fps_num = 30;
@@ -609,7 +609,7 @@ int main(int argc, char **argv)
 	const std::string mac_vt_plugin = "/Applications/OBS.app/Contents/PlugIns/mac-videotoolbox.plugin";
 	const std::string mac_vt_bin = mac_vt_plugin + "/Contents/MacOS/mac-videotoolbox";
 	const std::string mac_vt_data = mac_vt_plugin + "/Contents/Resources";
-	const std::string sync_plugin_bin = options.plugin_root + "/Contents/MacOS/obs-audio-video-sync-dock";
+	const std::string sync_plugin_bin = options.plugin_root + "/Contents/MacOS/obs-avs";
 	const std::string sync_plugin_data = options.plugin_root + "/Contents/Resources";
 	const std::string graphics_module = obs_build + "/libobs-metal/RelWithDebInfo/libobs-metal.dylib";
 
