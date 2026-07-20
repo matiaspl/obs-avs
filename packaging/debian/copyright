@@ -1,6 +1,6 @@
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
-Source: <https://github.com/matiaspl/obs-avs>
-Upstream-Name: AV Sync and Latency Dock
+Source: <https://github.com/matiaspl/klaps>
+Upstream-Name: Klaps
 Upstream-Contact: Mateusz Starzak <mstarzak@gmail.com>
 
 Files:

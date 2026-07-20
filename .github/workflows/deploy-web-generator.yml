@@ -34,12 +34,6 @@ jobs:
         mkdir -p _site
         base_url="https://matiaspl.github.io/klaps"
         for file in \
-          sync-pattern-6000.mp4 \
-          sync-pattern-5994.mp4 \
-          sync-pattern-5000.mp4 \
-          sync-pattern-2400.mp4 \
-          sync-pattern-2398.mp4 \
-          sync-pattern-3000-small.mp4 \
           av-offset-pattern-6000.mov \
           av-offset-pattern-5994.mov \
           av-offset-pattern-5000.mov \

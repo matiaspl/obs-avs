@@ -1,5 +1,5 @@
 /*
-OBS Audio Video Sync Dock
+Klaps
 Copyright (C) 2023 Norihiro Kamae <norihiro@nagater.net>
 
 This program is free software; you can redistribute it and/or modify
@@ -24,7 +24,6 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #include <stdlib.h>
 #include <algorithm>
 #include <mutex>
-#include <complex>
 #include <vector>
 #include <chrono>
 #include <util/platform.h>
@@ -35,9 +34,6 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #include "plugin-macros.generated.h"
 
 #define N_CORNERS 4
-
-#define N_AUDIO_SYMBOLS 16
-#define N_SYMBOL_BUFFER 20
 
 #define V2_MARKER_MS 80
 #define V2_MARKER_F0 500.0f
@@ -67,45 +63,6 @@ with this program; if not, write to the Free Software Foundation, Inc.,
  *   */
 #define MAX_WIDTH_HEIGHT 87378u
 
-struct st_audio_buffer
-{
-	std::deque<std::pair<int32_t, int32_t>> buffer;
-
-	void push_back(int16_t xr, int16_t xi, size_t length)
-	{
-		int32_t vr = xr, vi = xi;
-		if (buffer.size()) {
-			vr += buffer.back().first;
-			vi += buffer.back().second;
-		}
-		buffer.push_back(std::make_pair(vr, vi));
-
-		if (buffer.size() <= length)
-			return;
-
-		buffer.pop_front();
-	};
-
-	std::pair<int32_t, int32_t> sum(size_t n_from_last)
-	{
-		if (buffer.size() <= 0)
-			return std::make_pair(0, 0);
-		if (n_from_last >= buffer.size())
-			return buffer[0];
-		return buffer[buffer.size() - n_from_last - 1];
-	}
-};
-
-std::pair<int32_t, int32_t> operator-(std::pair<int32_t, int32_t> a, std::pair<int32_t, int32_t> b)
-{
-	return std::make_pair(a.first - b.first, a.second - b.second);
-}
-
-std::complex<float> int16_to_complex(std::pair<int32_t, int32_t> x)
-{
-	return std::complex<float>((float)x.first / 32768.0f, (float)x.second / 32768.0f);
-}
-
 struct corner_type
 {
 	uint32_t x, y;
@@ -122,7 +79,6 @@ struct st_audio_v2_candidate
 struct sync_test_output
 {
 	obs_output_t *context;
-	uint32_t detect_mode = SYNC_TEST_DETECT_LEGACY;
 	bool packet_callback_registered = false;
 
 	/* Configuration from OBS output context */
@@ -147,10 +103,6 @@ struct sync_test_output
 	uint64_t video_marker_max_ts = 0;
 
 	/* Sync pattern detection from audio */
-	struct st_audio_buffer audio_buffer;
-	struct peak_finder audio_marker_finder;
-	uint32_t last_audio_index_max = 256;
-
 	std::deque<float> audio_v2_raw_buffer;
 	std::deque<uint64_t> audio_v2_raw_ts_buffer;
 	uint64_t audio_v2_raw_first_sample = 0;
@@ -167,14 +119,6 @@ struct sync_test_output
 
 	std::mutex mutex;
 
-	/* Audio pattern information from video to audio */
-	uint32_t f = 0;
-	uint32_t c = 0;
-	uint32_t q_ms = 0;
-
-	uint32_t f_last = 0;
-	uint32_t c_last = 0;
-
 	/* Encoder PTS to OBS compositor clock mapping */
 	std::mutex clock_mutex;
 	bool cts_origin_valid = false;
@@ -189,6 +133,7 @@ struct sync_test_output
 
 static void video_marker_found(struct sync_test_output *st, uint64_t timestamp, float score);
 static bool st_create_analyzer_encoders(struct sync_test_output *st);
+static void st_detach_analyzer_encoders(struct sync_test_output *st);
 static void st_packet_timing(obs_output_t *output, struct encoder_packet *packet,
 			     struct encoder_packet_time *packet_time, void *param);
 
@@ -197,7 +142,7 @@ static const char *st_get_name(void *)
 	return "sync-test-output";
 }
 
-static void *st_create(obs_data_t *settings, obs_output_t *output)
+static void *st_create(obs_data_t *, obs_output_t *output)
 {
 	static const char *signals[] = {
 		"void video_marker_found(ptr data)",
@@ -210,12 +155,6 @@ static void *st_create(obs_data_t *settings, obs_output_t *output)
 
 	auto *st = new sync_test_output;
 	st->context = output;
-	if (settings)
-		st->detect_mode = (uint32_t)obs_data_get_int(settings, "detect_mode");
-	if (!st_create_analyzer_encoders(st)) {
-		delete st;
-		return nullptr;
-	}
 
 	return st;
 }
@@ -225,8 +164,7 @@ static void st_destroy(void *data)
 	auto *st = (struct sync_test_output *)data;
 	if (st->packet_callback_registered)
 		obs_output_remove_packet_callback(st->context, st_packet_timing, st);
-	obs_output_set_video_encoder(st->context, nullptr);
-	obs_output_set_audio_encoder(st->context, nullptr, 0);
+	st_detach_analyzer_encoders(st);
 	delete st;
 }
 
@@ -445,8 +383,14 @@ static bool st_start(void *data)
 		st->cts_origin_ns = 0;
 	}
 
+	/* Creating the output object must not activate or attach the probes.  Keep
+	 * the analyzer encoders entirely behind the explicit output start path. */
+	if (!st_create_analyzer_encoders(st))
+		return false;
+
 	if (!obs_output_initialize_encoders(st->context, 0)) {
 		blog(LOG_ERROR, "Failed to initialize analyzer encoders");
+		st_detach_analyzer_encoders(st);
 		return false;
 	}
 
@@ -456,6 +400,7 @@ static bool st_start(void *data)
 		obs_output_remove_packet_callback(st->context, st_packet_timing, st);
 		st->packet_callback_registered = false;
 		blog(LOG_ERROR, "Failed to start analyzer data capture");
+		st_detach_analyzer_encoders(st);
 		return false;
 	}
 
@@ -608,14 +553,7 @@ static void st_raw_video_qrcode_decode(struct sync_test_output *st, struct video
 
 		adjust_corners(st->qr_corners);
 
-		if (st->qr_data.f > 0 && st->qr_data.c > 0) {
-			std::unique_lock<std::mutex> lock(st->mutex);
-			st->f = st->qr_data.f;
-			st->c = st->qr_data.c;
-			st->q_ms = st->qr_data.q_ms;
-		}
-
-		if (st->qr_data.protocol >= 2 && st->qr_data.q_ms > 0)
+		if (st->qr_data.q_ms > 0)
 			st->video_marker_min_ts = frame->timestamp + ((uint64_t)st->qr_data.q_ms * 1000000ULL) / 2;
 		else
 			st->video_marker_min_ts = 0;
@@ -632,7 +570,7 @@ static void st_raw_video_find_marker(struct sync_test_output *st, struct video_d
 		st->video_level_prev = 0;
 		return;
 	}
-	if (st->qr_data.protocol >= 2 && frame->timestamp < st->video_marker_min_ts) {
+	if (frame->timestamp < st->video_marker_min_ts) {
 		st->video_level_prev = 0;
 		return;
 	}
@@ -682,33 +620,21 @@ static void st_raw_video_find_marker(struct sync_test_output *st, struct video_d
 
 	if (st->qr_data.valid && st->video_level_prev < 0 && sum >= 0) {
 		uint64_t t = frame->timestamp - st->video_level_prev_ts;
-		uint64_t add;
-		if (st->qr_data.protocol >= 2) {
-			/* v2 polarity-step: report the linear zero-cross. The audio side
-			 * reports the sample-accurate marker-center, so video must use the
-			 * same "requested event time" semantic; the +T/2 below biases v2
-			 * by half a frame. */
-			const int64_t denom = sum - st->video_level_prev;
-			add = denom > 0 ? util_mul_div64(t, (uint64_t)(-st->video_level_prev), (uint64_t)denom) : t / 2;
-		}
-		else {
-			/* v1 single-frame pulse: the time half frame later than the zero-cross. */
-			add = util_mul_div64(t, sum - st->video_level_prev * 3, (sum - st->video_level_prev) * 2);
-		}
+		/* Report the linear polarity-step zero-cross. The audio side reports
+		 * the sample-accurate marker center, so video uses the same requested
+		 * event-time semantic. */
+		const int64_t denom = sum - st->video_level_prev;
+		const uint64_t add = denom > 0 ? util_mul_div64(t, (uint64_t)(-st->video_level_prev), (uint64_t)denom)
+					       : t / 2;
 		video_marker_found(st, st->video_level_prev_ts + add, (float)(sum - st->video_level_prev));
 	}
 	st->video_level_prev = sum;
 	st->video_level_prev_ts = frame->timestamp;
 }
 
-static bool is_overlapped(uint32_t index, uint32_t index_max, uint32_t next_index)
+static bool sync_index_matches(const struct sync_index &si, uint64_t sequence)
 {
-	return index_max && ((index_max + next_index - index) % index_max) > index_max / 2;
-}
-
-static bool sync_index_matches(const struct sync_index &si, uint32_t protocol, uint64_t sequence)
-{
-	return si.protocol == protocol && si.sequence == sequence;
+	return si.sequence == sequence;
 }
 
 static uint64_t abs_diff_u64(uint64_t a, uint64_t b)
@@ -744,22 +670,20 @@ static void set_sync_glass_to_glass(struct sync_index &si, bool has_glass_to_gla
 	si.video_epoch_ns = video_epoch_ns;
 }
 
-static void sync_sequence_found(struct sync_test_output *st, uint64_t sequence, uint64_t ts, bool is_video, int index,
-				float score, bool has_glass_to_glass = false, int64_t glass_to_glass_ns = 0,
+static void sync_sequence_found(struct sync_test_output *st, uint64_t sequence, uint64_t ts, bool is_video, float score,
+				bool has_glass_to_glass = false, int64_t glass_to_glass_ns = 0,
 				uint64_t source_epoch_ns = 0, uint64_t video_epoch_ns = 0)
 {
 	std::unique_lock<std::mutex> lock(st->mutex);
 
 	for (auto it = st->sync_indices.begin(); it != st->sync_indices.end();) {
-		if (it->protocol == 2) {
-			const uint64_t latest_ts = latest_sync_ts(*it);
-			if (latest_ts && latest_ts + V2_PAIR_WINDOW_NS < ts) {
-				it = st->sync_indices.erase(it);
-				continue;
-			}
+		const uint64_t latest_ts = latest_sync_ts(*it);
+		if (latest_ts && latest_ts + V2_PAIR_WINDOW_NS < ts) {
+			it = st->sync_indices.erase(it);
+			continue;
 		}
 
-		if (!sync_index_matches(*it, 2, sequence)) {
+		if (!sync_index_matches(*it, sequence)) {
 			it++;
 			continue;
 		}
@@ -792,63 +716,11 @@ static void sync_sequence_found(struct sync_test_output *st, uint64_t sequence, 
 		st->sync_indices.erase(st->sync_indices.begin());
 
 	auto &ref = st->sync_indices.emplace_back();
-	ref.protocol = 2;
 	ref.sequence = sequence;
-	ref.index = index;
-	ref.index_max = 0;
 	(is_video ? ref.video_ts : ref.audio_ts) = ts;
 	(is_video ? ref.video_score : ref.audio_score) = score;
 	if (is_video)
 		set_sync_glass_to_glass(ref, has_glass_to_glass, glass_to_glass_ns, source_epoch_ns, video_epoch_ns);
-}
-
-static void sync_index_found(struct sync_test_output *st, int index, uint64_t ts, bool is_video, uint32_t index_max)
-{
-	std::unique_lock<std::mutex> lock(st->mutex);
-
-	for (auto it = st->sync_indices.begin(); it != st->sync_indices.end();) {
-		if (it->protocol != 1) {
-			it++;
-			continue;
-		}
-
-		if ((it->video_ts && is_video) || (it->audio_ts && !is_video)) {
-			if (is_overlapped(it->index, it->index_max, index)) {
-				st->sync_indices.erase(it++);
-				continue;
-			}
-		}
-
-		if (it->index != index) {
-			it++;
-			continue;
-		}
-
-		if ((it->video_ts && !is_video) || (it->audio_ts && is_video)) {
-			(is_video ? it->video_ts : it->audio_ts) = ts;
-			if (is_video)
-				it->index_max = index_max;
-
-			signal_sync_found(st->context, &*it);
-
-			/* Do not erase `it` so that `identify_audio_index_max` can refer the last found pattern.
-			 * Current `it` will be erased at the next call of this function. */
-			return;
-		}
-
-		/* Remove the old one. Later, insert the new one to the end */
-		st->sync_indices.erase(it);
-		break;
-	}
-
-	while (st->sync_indices.size() >= 128)
-		st->sync_indices.erase(st->sync_indices.begin());
-
-	auto &ref = st->sync_indices.emplace_back();
-	ref.protocol = 1;
-	ref.index = index;
-	(is_video ? ref.video_ts : ref.audio_ts) = ts;
-	ref.index_max = index_max;
 }
 
 static void video_marker_found(struct sync_test_output *st, uint64_t timestamp, float score)
@@ -861,7 +733,6 @@ static void video_marker_found(struct sync_test_output *st, uint64_t timestamp, 
 	struct video_marker_found_s data;
 	data.timestamp = timestamp;
 	data.score = score;
-	data.protocol = st->qr_data.protocol;
 	data.sequence = st->qr_data.sequence;
 	data.glass_to_glass_ns = 0;
 	data.source_epoch_ns = 0;
@@ -873,12 +744,8 @@ static void video_marker_found(struct sync_test_output *st, uint64_t timestamp, 
 	calldata_set_ptr(&cd, "data", &data);
 	signal_handler_signal(sh, "video_marker_found", &cd);
 
-	if (data.protocol >= 2)
-		sync_sequence_found(st, data.sequence, data.timestamp, true, data.qr_data.index, data.score,
-				    data.has_glass_to_glass, data.glass_to_glass_ns, data.source_epoch_ns,
-				    data.video_epoch_ns);
-	else
-		sync_index_found(st, data.qr_data.index, data.timestamp, true, data.qr_data.index_max);
+	sync_sequence_found(st, data.sequence, data.timestamp, true, data.score, data.has_glass_to_glass,
+			    data.glass_to_glass_ns, data.source_epoch_ns, data.video_epoch_ns);
 }
 
 static void st_raw_video(void *data, struct video_data *frame)
@@ -890,44 +757,6 @@ static void st_raw_video(void *data, struct video_data *frame)
 
 	st_raw_video_qrcode_decode(st, frame);
 	st_raw_video_find_marker(st, frame);
-}
-
-static uint32_t identify_audio_index_max(struct sync_test_output *st, int index)
-{
-	/* Find `index_max` for video marker that have the biggest index but
-	 * the index is less than or equal to the given index.
-	 * In other words, find the closest but not future video marker.
-	 */
-
-	std::unique_lock<std::mutex> lock(st->mutex);
-	uint32_t last_index_max = 256;
-	uint32_t cand = st->last_audio_index_max;
-	uint32_t cand_diff = 256;
-
-	for (auto it = st->sync_indices.begin(); it != st->sync_indices.end(); it++) {
-		if (it->protocol != 1 || !it->video_ts || !it->index_max)
-			continue;
-		uint32_t diff = (last_index_max + index - it->index) % last_index_max;
-		if (diff < cand_diff) {
-			cand = it->index_max;
-			cand_diff = diff;
-		}
-		last_index_max = it->index_max;
-	}
-
-	return st->last_audio_index_max = cand;
-}
-
-static uint32_t crc4_check(uint32_t data, uint32_t size)
-{
-	uint32_t p = 0x13 << (size - 5);
-	while (size > 4) {
-		if (data & (1 << (size - 1)))
-			data ^= p;
-		size--;
-		p >>= 1;
-	}
-	return data;
 }
 
 static uint8_t crc8_u8(uint8_t data)
@@ -1205,16 +1034,13 @@ static void audio_v2_signal_marker(struct sync_test_output *st, uint32_t sequenc
 
 	struct audio_marker_found_s data;
 	data.timestamp = timestamp;
-	data.index = (int)(sequence & 0xFF);
 	data.score = score;
-	data.index_max = 0;
-	data.protocol = 2;
 	data.sequence = sequence;
 
 	calldata_set_ptr(&cd, "data", &data);
 	signal_handler_signal(sh, "audio_marker_found", &cd);
 
-	sync_sequence_found(st, sequence, data.timestamp, false, data.index, data.score);
+	sync_sequence_found(st, sequence, data.timestamp, false, data.score);
 }
 
 static void audio_v2_process_candidates(struct sync_test_output *st)
@@ -1311,135 +1137,15 @@ static void audio_v2_push_sample(struct sync_test_output *st, float sample, uint
 	audio_v2_process_candidates(st);
 }
 
-static inline void st_raw_audio_decode_data(struct sync_test_output *st, std::complex<float> phase, uint64_t ts)
-{
-	uint32_t symbol_num = st->audio_sample_rate * st->c_last;
-	uint32_t symbol_den = st->f_last;
-
-	uint16_t index = 0;
-	for (int i = 0; i < 12; i += 2) {
-		auto s0 = st->audio_buffer.sum(symbol_num * i / 2 / symbol_den);
-		auto s1 = st->audio_buffer.sum(symbol_num * (i / 2 + 1) / symbol_den);
-		auto x = int16_to_complex(s0 - s1);
-		auto real = (x / phase).real();
-		auto imag = (x / phase).imag();
-		if (real > 0.0f)
-			index |= 1 << i;
-		if (imag > 0.0f)
-			index |= 2 << i;
-	}
-
-	auto crc4 = crc4_check(0xF0000 | index, 20);
-
-	if (crc4 != 0) {
-		blog(LOG_DEBUG, "st_raw_audio_decode_data: CRC mismatch: received data=0x%03X crc=0x%X", index, crc4);
-		return;
-	}
-
-	uint8_t stack[64];
-	struct calldata cd;
-	calldata_init_fixed(&cd, stack, sizeof(stack));
-	auto *sh = obs_output_get_signal_handler(st->context);
-
-	struct audio_marker_found_s data;
-	data.timestamp = ts;
-	data.index = index >> 4;
-	data.score = 0.0f;
-	data.index_max = identify_audio_index_max(st, index >> 4);
-	data.protocol = 1;
-	data.sequence = 0;
-
-	calldata_set_ptr(&cd, "data", &data);
-	signal_handler_signal(sh, "audio_marker_found", &cd);
-
-	sync_index_found(st, index >> 4, ts, false, data.index_max);
-}
-
-static inline void st_raw_audio_test_preamble(struct sync_test_output *st, uint64_t ts, float v0)
-{
-	uint32_t f = st->f_last;
-	uint32_t c1 = st->c_last / 2;
-	uint64_t symbol_ns = util_mul_div64(c1, 1000000000ULL, f);
-	size_t buffer_length = (size_t)(st->audio_sample_rate * c1 * N_SYMBOL_BUFFER / f);
-
-	/* Test the preamble pattern 0xF0  */
-	auto s0 = st->audio_buffer.sum(0);
-	auto s4 = st->audio_buffer.sum(buffer_length * 4 / N_SYMBOL_BUFFER);
-	auto s8 = st->audio_buffer.sum(buffer_length * 8 / N_SYMBOL_BUFFER);
-	auto s12 = st->audio_buffer.sum(buffer_length * 12 / N_SYMBOL_BUFFER);
-
-	float det8_0 = std::abs(int16_to_complex(s4 - s0) - int16_to_complex(s8 - s4));
-	float det12_8 = det8_0 * 0.5f - std::abs(int16_to_complex(s12 - s8));
-	float det = det8_0 + det12_8;
-
-	UNUSED_PARAMETER(v0);
-	// auto dbg = int16_to_complex(st->audio_buffer.sum(1) - s0);
-	// blog(LOG_INFO, "st_raw_audio-plot: %.05f %f %f %f %f", ts * 1e-9, v0, det, dbg.real(), dbg.imag());
-
-	if (st->audio_marker_finder.append(det, ts, symbol_ns * 12)) {
-		auto s12 = st->audio_buffer.sum(buffer_length * 12 / N_SYMBOL_BUFFER);
-		auto s16 = st->audio_buffer.sum(buffer_length * 16 / N_SYMBOL_BUFFER);
-		auto s20 = st->audio_buffer.sum(buffer_length * 20 / N_SYMBOL_BUFFER);
-
-		auto x = int16_to_complex(s16 - s20) - int16_to_complex(s12 - s16);
-		x *= std::complex(1.0f, -1.0f);
-
-		ts = st->audio_marker_finder.last_ts - symbol_ns * N_AUDIO_SYMBOLS / 2;
-
-		st_raw_audio_decode_data(st, x / std::abs(x), ts);
-	}
-}
-
 static void st_raw_audio(void *data, struct audio_data *frames)
 {
 	auto *st = (struct sync_test_output *)data;
 
-	if (st->detect_mode == SYNC_TEST_DETECT_AV_OFFSET) {
-		for (uint32_t i = 0; i < frames->frames; i++) {
-			uint64_t ts = frames->timestamp + util_mul_div64(i, 1000000000ULL, st->audio_sample_rate);
-			float v0 = ((float *)frames->data[0])[i];
-			float v1 = st->audio_channels >= 2 ? ((float *)frames->data[1])[i] : v0;
-			audio_v2_push_sample(st, (v0 + v1) * 0.5f, ts);
-		}
-	}
-
-	std::unique_lock<std::mutex> lock(st->mutex);
-	uint32_t f = st->f;
-	uint32_t c = st->c;
-	uint32_t q_ms = st->q_ms;
-	lock.unlock();
-
-	if (f <= 0 || c <= 0)
-		return;
-
-	if (f != st->f_last || c != st->c_last) {
-		st->f_last = f;
-		st->c_last = c;
-		st->audio_buffer.buffer.clear();
-	}
-
-	if (q_ms > 0)
-		st->audio_marker_finder.dumping_range = q_ms * 1000000 * 6 * 2;
-
-	float phase = (frames->timestamp % 1000000000) * (float)(1e-9 * 2 * M_PI * f);
-	float phase_step = (float)(2 * M_PI * f) / st->audio_sample_rate;
-	size_t buffer_length = (size_t)(st->audio_sample_rate * c * N_SYMBOL_BUFFER / f);
-
 	for (uint32_t i = 0; i < frames->frames; i++) {
-		float osc0 = sinf(phase + phase_step * i);
-		float osc1 = cosf(phase + phase_step * i);
 		uint64_t ts = frames->timestamp + util_mul_div64(i, 1000000000ULL, st->audio_sample_rate);
-
 		float v0 = ((float *)frames->data[0])[i];
-		float v1 = st->audio_channels >= 2 ? ((float *)frames->data[1])[i] : 0.0f;
-		int16_t vr = (int16_t)((v0 * osc0 - v1 * osc1) * 16383.0f);
-		int16_t vi = (int16_t)((v0 * osc1 + v1 * osc0) * 16383.0f);
-		st->audio_buffer.push_back(vr, vi, buffer_length);
-
-		if (st->audio_buffer.buffer.size() < buffer_length)
-			continue;
-
-		st_raw_audio_test_preamble(st, ts, v0);
+		float v1 = st->audio_channels >= 2 ? ((float *)frames->data[1])[i] : v0;
+		audio_v2_push_sample(st, (v0 + v1) * 0.5f, ts);
 	}
 }
 
@@ -1478,12 +1184,12 @@ static void analyzer_encoder_destroy(void *) {}
 
 static const char *video_analyzer_encoder_name(void *)
 {
-	return "AV Sync Video Analyzer";
+	return "Klaps Video Analyzer";
 }
 
 static const char *audio_analyzer_encoder_name(void *)
 {
-	return "AV Sync Audio Analyzer";
+	return "Klaps Audio Analyzer";
 }
 
 static void video_analyzer_get_info(void *, struct video_scale_info *info)
@@ -1593,6 +1299,12 @@ static bool st_create_analyzer_encoders(struct sync_test_output *st)
 	obs_encoder_release(video);
 	obs_encoder_release(audio);
 	return true;
+}
+
+static void st_detach_analyzer_encoders(struct sync_test_output *st)
+{
+	obs_output_set_video_encoder(st->context, nullptr);
+	obs_output_set_audio_encoder(st->context, nullptr, 0);
 }
 
 extern "C" void register_sync_test_analyzer_encoders()

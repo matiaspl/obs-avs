@@ -35,7 +35,7 @@ base64 or plaintext credential file. To target a fork, pass
 To verify configuration without exposing values:
 
 ```sh
-gh secret list --repo matiaspl/obs-avs | awk '$1 ~ /^MACOS_/'
+gh secret list --repo matiaspl/klaps | awk '$1 ~ /^MACOS_/'
 ```
 
 Use **Actions > Plugin Build > Run workflow** for a test build. Signing is

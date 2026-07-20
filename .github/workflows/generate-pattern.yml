@@ -1,4 +1,4 @@
-name: Generate synchronization pattern files
+name: Generate AV offset pattern files
 
 on:
   push:
@@ -33,5 +33,5 @@ jobs:
     - name: Upload generated media
       uses: actions/upload-artifact@v4
       with:
-        name: sync-pattern-media
+        name: av-offset-pattern-media
         path: _site/

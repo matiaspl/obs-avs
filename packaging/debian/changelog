@@ -1,4 +1,4 @@
-audio-video-sync-dock-plugin-for-obs (%VERSION%-1~%DISTRIBUTION%) %DISTRIBUTION%; urgency=medium
+klaps-plugin-for-obs (%VERSION%-1~%DISTRIBUTION%) %DISTRIBUTION%; urgency=medium
 
   [ Norihiro Kamae ]
   * Initial release.

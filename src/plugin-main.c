@@ -1,5 +1,5 @@
 /*
-OBS Audio Video Sync Dock
+Klaps
 Copyright (C) 2023 Norihiro Kamae <norihiro@nagater.net>
 
 This program is free software; you can redistribute it and/or modify
@@ -25,13 +25,13 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #include "plugin-macros.generated.h"
 
 #if LIBOBS_API_VER < MAKE_SEMANTIC_VERSION(31, 0, 0)
-#error "obs-avs requires OBS Studio 31 or newer"
+#error "Klaps requires OBS Studio 31 or newer"
 #endif
 
 OBS_DECLARE_MODULE()
 OBS_MODULE_USE_DEFAULT_LOCALE(PLUGIN_NAME, "en-US")
 
-#define CONFIG_SECTION_NAME "AudioVideoSyncDock"
+#define CONFIG_SECTION_NAME "Klaps"
 
 void *create_sync_test_dock();
 void register_sync_test_analyzer_encoders();
