@@ -154,6 +154,52 @@ The analyzer always follows the main Program canvas and audio Track 1. It does
 not need to be added to a scene or attached to a source, and it can remain
 active while OBS is streaming or recording.
 
+### Correcting a source's Sync Offset
+
+**Correct Sync Offset** turns the current Program measurement into an OBS Sync
+Offset adjustment for the audio source. It aims for a measured A/V offset of
+zero and uses:
+
+```text
+new Sync Offset = current Sync Offset - measured AV Offset
+```
+
+For example, if the dock reports `+120 ms` (**Audio lagged**) and the source is
+currently at `0 ms`, the proposed Sync Offset is `-120 ms`. If it reports
+`-80 ms` (**Audio early**), the proposed value is `+80 ms`. The confirmation
+dialog shows the source, current value, proposed value, and measurement before
+anything is changed. Confirming updates that source's OBS Sync Offset and saves
+the OBS configuration; it does not modify the test media or add a filter.
+
+Automatic correction is available only when OBS has exactly one active audio
+source routed to Track 1. With several active sources, the dock can measure the
+Program mix but cannot determine which source is responsible for the offset, so
+it will not change any of them. To correct one source, isolate it for the test:
+deactivate the other audio sources or route them away from Track 1, while
+leaving the source under test and its video visible on Program.
+
+The button becomes available after at least three consistent measurements and
+only while the latest measurement is less than 10 seconds old. It is disabled
+if a Program transition is active, the scene or active Track 1 source set has
+changed, the source's Sync Offset has changed since measurement, the source
+cannot be identified safely, or the proposed value is outside OBS's supported
+`-950 ms` to `20000 ms` range. The status below the button explains which
+condition is not satisfied.
+
+Use the correction only for a stable, repeatable offset in the path you intend
+to operate. Keep the same source, routing, frame rate, sample rate, buffering,
+and capture path while measuring. After applying it, the dock clears the old
+samples; wait for a new stable result and verify it, preferably in a Program
+recording. Do not use a single noisy reading to compensate room reflections,
+variable wireless or network delay, or a source that will be used later with a
+different capture path.
+
+For coupled asynchronous sources such as Media Source, or buffered AJA and
+DeckLink sources, changing Sync Offset can itself re-anchor audio in affected
+OBS versions. Treat the correction as the end of the old run: restart or
+reactivate the source if appropriate, collect a fresh set of readings, and
+verify the resulting Program output.
+
 To verify the reference file itself without OBS media-source scheduling in the
 path, run:
 
