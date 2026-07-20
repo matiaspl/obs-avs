@@ -20,16 +20,16 @@
 
 namespace {
 
-constexpr const char *kOutputId = "com.broadcast-ready.obs-avs.output";
-constexpr const char *kVideoAnalyzerEncoderId = "com.broadcast-ready.obs-avs.video-analyzer";
-constexpr const char *kAudioAnalyzerEncoderId = "com.broadcast-ready.obs-avs.audio-analyzer";
+constexpr const char *kOutputId = "com.broadcast-ready.klaps.output";
+constexpr const char *kVideoAnalyzerEncoderId = "com.broadcast-ready.klaps.video-analyzer";
+constexpr const char *kAudioAnalyzerEncoderId = "com.broadcast-ready.klaps.audio-analyzer";
 
 struct Options
 {
 	std::string media_path = "release/av-offset-pattern-3000.mp4";
 	std::string browser_url;
 	std::string obs_root = "/Users/mstarzak/work/obs-studio-32.1.2";
-	std::string plugin_root = "release-obs-32.1.2/obs-avs.plugin";
+	std::string plugin_root = "release-obs-32.1.2/klaps.plugin";
 	int width = 1280;
 	int height = 720;
 	int fps_num = 30;
@@ -257,7 +257,7 @@ static void on_video_marker_found(void *param, calldata_t *cd)
 {
 	auto *state = static_cast<HarnessState *>(param);
 	auto *marker = static_cast<video_marker_found_s *>(calldata_ptr(cd, "data"));
-	if (!marker || marker->protocol < 2)
+	if (!marker)
 		return;
 
 	state->video_markers++;
@@ -278,7 +278,7 @@ static void on_audio_marker_found(void *param, calldata_t *cd)
 {
 	auto *state = static_cast<HarnessState *>(param);
 	auto *marker = static_cast<audio_marker_found_s *>(calldata_ptr(cd, "data"));
-	if (!marker || marker->protocol < 2)
+	if (!marker)
 		return;
 
 	state->audio_markers++;
@@ -343,7 +343,7 @@ static void on_sync_found(void *param, calldata_t *cd)
 {
 	auto *state = static_cast<HarnessState *>(param);
 	auto *sync = static_cast<sync_index *>(calldata_ptr(cd, "data"));
-	if (!sync || sync->protocol < 2 || !sync->video_ts || !sync->audio_ts)
+	if (!sync || !sync->video_ts || !sync->audio_ts)
 		return;
 
 	Measurement measurement;
@@ -609,7 +609,7 @@ int main(int argc, char **argv)
 	const std::string mac_vt_plugin = "/Applications/OBS.app/Contents/PlugIns/mac-videotoolbox.plugin";
 	const std::string mac_vt_bin = mac_vt_plugin + "/Contents/MacOS/mac-videotoolbox";
 	const std::string mac_vt_data = mac_vt_plugin + "/Contents/Resources";
-	const std::string sync_plugin_bin = options.plugin_root + "/Contents/MacOS/obs-avs";
+	const std::string sync_plugin_bin = options.plugin_root + "/Contents/MacOS/klaps";
 	const std::string sync_plugin_data = options.plugin_root + "/Contents/Resources";
 	const std::string graphics_module = obs_build + "/libobs-metal/RelWithDebInfo/libobs-metal.dylib";
 
@@ -723,10 +723,7 @@ int main(int argc, char **argv)
 
 	obs_set_output_source(0, obs_scene_get_source(scene));
 
-	obs_data_t *output_settings = obs_data_create();
-	obs_data_set_int(output_settings, "detect_mode", SYNC_TEST_DETECT_AV_OFFSET);
-	obs_output_t *output = obs_output_create(kOutputId, "sync-test-output", output_settings, nullptr);
-	obs_data_release(output_settings);
+	obs_output_t *output = obs_output_create(kOutputId, "sync-test-output", nullptr, nullptr);
 	if (!output) {
 		std::fprintf(stderr, "obs_output_create(%s) failed\n", kOutputId);
 		obs_set_output_source(0, nullptr);
@@ -736,23 +733,6 @@ int main(int argc, char **argv)
 		obs_shutdown();
 		return 1;
 	}
-	obs_encoder_t *analyzer_video = obs_output_get_video_encoder(output);
-	obs_encoder_t *analyzer_audio = obs_output_get_audio_encoder(output, 0);
-	if (!analyzer_video || !analyzer_audio ||
-	    std::strcmp(obs_encoder_get_id(analyzer_video), kVideoAnalyzerEncoderId) ||
-	    std::strcmp(obs_encoder_get_id(analyzer_audio), kAudioAnalyzerEncoderId)) {
-		std::fprintf(stderr, "sync-test output did not attach the expected analyzer encoders\n");
-		obs_output_release(output);
-		obs_set_output_source(0, nullptr);
-		obs_sceneitem_remove(item);
-		obs_scene_release(scene);
-		obs_source_release(test_source);
-		obs_shutdown();
-		return 1;
-	}
-	std::printf("ANALYZER video=%s audio=%s mixer=1\n", obs_encoder_get_id(analyzer_video),
-		    obs_encoder_get_id(analyzer_audio));
-
 	HarnessState state;
 	state.trace_markers = options.trace_markers;
 	signal_handler_connect(obs_output_get_signal_handler(output), "video_marker_found", on_video_marker_found,
@@ -807,6 +787,28 @@ int main(int argc, char **argv)
 		obs_shutdown();
 		return 1;
 	}
+
+	obs_encoder_t *analyzer_video = obs_output_get_video_encoder(output);
+	obs_encoder_t *analyzer_audio = obs_output_get_audio_encoder(output, 0);
+	if (!analyzer_video || !analyzer_audio ||
+	    std::strcmp(obs_encoder_get_id(analyzer_video), kVideoAnalyzerEncoderId) ||
+	    std::strcmp(obs_encoder_get_id(analyzer_audio), kAudioAnalyzerEncoderId)) {
+		std::fprintf(stderr, "sync-test output did not attach the expected analyzer encoders\n");
+		stop_output(output);
+		stop_output(record_output);
+		obs_output_release(record_output);
+		obs_encoder_release(record_video_encoder);
+		obs_encoder_release(record_audio_encoder);
+		obs_output_release(output);
+		obs_set_output_source(0, nullptr);
+		obs_sceneitem_remove(item);
+		obs_scene_release(scene);
+		obs_source_release(test_source);
+		obs_shutdown();
+		return 1;
+	}
+	std::printf("ANALYZER video=%s audio=%s mixer=1\n", obs_encoder_get_id(analyzer_video),
+		    obs_encoder_get_id(analyzer_audio));
 
 	if (!use_browser_source(options) && options.defer_media_start) {
 		obs_data_t *start_settings = create_media_settings(options, true);

@@ -40,6 +40,6 @@ export DYLD_LIBRARY_PATH="$OBS_BUILD/libobs-metal/RelWithDebInfo:$OBS_BUILD/libo
 
 exec "$HARNESS" \
 	--obs-root "$OBS_ROOT" \
-	--plugin "$ROOT_DIR/release-obs-32.1.2/obs-avs.plugin" \
+	--plugin "$ROOT_DIR/release-obs-32.1.2/klaps.plugin" \
 	--media "$ROOT_DIR/release/av-offset-pattern-3000.mp4" \
 	"$@"

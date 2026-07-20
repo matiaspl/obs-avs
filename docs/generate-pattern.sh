@@ -16,7 +16,6 @@ while (($# > 0)); do
 	esac
 done
 
-videogen="$d0/../tool/videogen.py"
 avoffsetgen="$d0/../tool/avoffsetgen.py"
 
 mkdir -p "$outdir"
@@ -24,13 +23,6 @@ tmpbase="$outdir/.avoffsetgen-work"
 rm -rf "$tmpbase"
 mkdir -p "$tmpbase"
 trap 'rm -rf "$tmpbase"' EXIT
-
-"$videogen" --vr 60         --ar 48000 'q=4,f=884,c=2' -o "$outdir/sync-pattern-6000.mp4"
-"$videogen" --vr 60000/1001 --ar 48000 'q=4,f=884,c=2' -o "$outdir/sync-pattern-5994.mp4"
-"$videogen" --vr 50         --ar 48000 'q=4,f=884,c=2' -o "$outdir/sync-pattern-5000.mp4"
-"$videogen" --vr 24         --ar 48000 'q=2,f=884,c=2' -o "$outdir/sync-pattern-2400.mp4"
-"$videogen" --vr 24000/1001 --ar 48000 'q=2,f=884,c=2' -o "$outdir/sync-pattern-2398.mp4"
-"$videogen" --vr 30         --ar 44100 'q=4,f=884,c=2' -o "$outdir/sync-pattern-3000-small.mp4" --size 320x180
 
 avoffset_common=(
 	--ar 48000

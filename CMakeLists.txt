@@ -1,17 +1,17 @@
 cmake_minimum_required(VERSION 3.12)
 
 project(
-	obs-avs
+	klaps
 	VERSION 2.2.0
-	DESCRIPTION "AV Sync and Latency Dock"
-	HOMEPAGE_URL "https://github.com/matiaspl/obs-avs"
+	DESCRIPTION "Klaps"
+	HOMEPAGE_URL "https://github.com/matiaspl/klaps"
 )
 
 set(PLUGIN_AUTHOR "Mateusz Starzak")
 set(PLUGIN_NAME "${PROJECT_DESCRIPTION}")
 
-set(MACOS_BUNDLEID "com.broadcast-ready.obs-avs")
-set(ID_PREFIX "com.broadcast-ready.obs-avs.")
+set(MACOS_BUNDLEID "com.broadcast-ready.klaps")
+set(ID_PREFIX "com.broadcast-ready.klaps.")
 set(MACOS_PACKAGE_UUID "957CC81B-4852-4864-BFAB-47E7B9EF62C6")
 set(MACOS_INSTALLER_UUID "8FFF83FC-6724-4FD6-95AB-A04C56568A6B")
 set(PLUGIN_URL "${PROJECT_HOMEPAGE_URL}")
@@ -40,6 +40,7 @@ configure_file(
 
 set(PLUGIN_SOURCES
 	src/plugin-main.c
+	src/av-offset-ruler.cpp
 	src/sync-test-output.cpp
 	src/sync-test-dock.cpp
 	src/sync-test-monitor.c

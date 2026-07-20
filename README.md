@@ -1,8 +1,8 @@
-# AV Sync and Latency Dock probe plugin for OBS Studio
+# Klaps for OBS Studio
 
 ## Introduction
 
-This is an OBS Studio plugin to measure the audio offset and video latency. 
+Klaps is an OBS Studio plugin that measures audio offset and video latency.
 
 It's based on solid grounds of Norihiro's [Audio Video Sync Dock](https://obsproject.com/forum/resources/audio-video-sync-dock.2028/). 
 
@@ -28,11 +28,73 @@ composition timestamp (CTS) is mapped to the system clock only for end-to-end
 latency. The analyzer emits and immediately discards one-byte packets, so it
 uses OBS's "encoded" signal flow without compressing or writing any media.
 
+## Asynchronous sources and repeatable measurements
+
+The dock measures the Program output, so a stable but unexpected result can
+also be a real timing state created by OBS rather than an error in the probe.
+This matters most for coupled asynchronous audio/video sources such as **Media
+Source** (and potentially VLC or some capture-device sources). In OBS 32.1.2,
+audio may arrive and establish the source timing mapping before the first
+asynchronous video frame is rendered. When that first video frame arrives,
+libobs replaces the mapping with a video-derived one. Audio already buffered
+under the earlier mapping can remain there because OBS smooths small timestamp
+changes (up to 70 ms) instead of moving the audio queue.
+
+As a result, two cold starts of the same async source can land on different
+baselines if their initial audio/video scheduling differs. A particularly
+confusing case is changing a source's **Audio Sync Offset** from `0 ms` to a
+nonzero value and back to `0 ms` while it is playing: in OBS 32.1.2 that can
+re-anchor the queued audio and leave a persistent step in the Program A/V
+measurement even though the final configured offset is zero. This is a libobs
+async-source startup/queue behavior, not evidence that Media Source changed
+the file's A/V timestamps or that the dock is reading source timestamps.
+
+Browser Source is not a useful control for this specific effect. Its video is
+drawn through a different, synchronous source path, so it does not use the
+same async-video timing-anchor handoff as Media Source.
+
+### AJA and DeckLink capture sources
+
+In OBS 32.1.2, this behavior also applies to **AJA** and **DeckLink** capture
+sources when their **Buffering** option is enabled. AJA enables buffering by
+default; DeckLink does not. In that mode, both sources use the buffered
+asynchronous-video path, where audio can be queued before the first rendered
+video frame establishes the video-derived timing mapping. Disabling Buffering
+makes these sources asynchronous-unbuffered and decoupled, which skips this
+particular timing-anchor overwrite. That changes capture latency and frame-drop
+behavior, so use it only as a deliberate test configuration, not as a general
+sync correction.
+
+For consistent results:
+
+1. Use the generated PCM, intra-only MOV reference asset when testing the
+   measurement path; it avoids intentional AAC priming and B-frame reorder
+   biases.
+2. Set all source sync offsets before starting the test. Do not nudge a
+   coupled async source's Audio Sync Offset during a run, even if you return it
+   to the original value.
+3. After changing an async source's offset, restarting, seeking, reactivating,
+   or replacing it, treat the resulting measurement as a new run. Do not
+   compare it directly with a baseline collected before that transition.
+4. Make several fresh runs with unchanged OBS frame rate, audio sample rate,
+   buffering, source settings, and capture path. Use the stable cluster of
+   readings as the baseline; investigate a run that forms a separate stable
+   cluster instead of averaging both states together.
+5. For an OBS behavior change, confirm the result against a Program recording
+   made with the same source offsets and output settings. This distinguishes
+   source-startup behavior from room acoustics, camera/display cadence, and
+   other capture-path variation.
+
+The general OBS-side remedy is to discard audio buffered before the first
+async-video timing anchor, then place subsequent audio using the video-derived
+mapping. Until that is available in the OBS version being tested, the clean
+startup workflow above is the reliable way to compare async-source results.
+
 ## Motivation behind the fork
 
-The v2 AV offset workflow for repeatable relative AV sync checks
-through real displays, speakers, cameras, microphones, OBS media and browser sources, and
-recordings. The most important improvements over the original design are:
+The AV offset workflow provides repeatable relative AV sync checks through real
+displays, speakers, cameras, microphones, OBS media and browser sources, and
+recordings. Its key properties are:
 - lower-flash video markers,
 - extended QR Code vocabulary allowing glass-to-glass latency  measurements,
 - new visual markers for naked-eye AV offset assessment (web generator-only),
@@ -41,23 +103,18 @@ recordings. The most important improvements over the original design are:
 - DTMF/CRC event identity,
 - MOV reference assets that avoid AAC priming and B-frame reorder bias.
 
-V2 differences and improvements: the original legacy pattern relies on
-high-contrast full-frame quadrant flashes and a tone-coded audio marker whose
-timing is tied to frame-sized pulses. The flashes can be uncomfortable or
-unsuitable for photosensitive viewers, while display cadence, camera exposure,
-encoder reordering, lossy audio priming, or a missed marker can bias the result.
-Version 2 separates timing from identity: sparse checkerboard transitions define
+The protocol separates timing from identity: sparse checkerboard transitions define
 the video instant, a matched-filter chirp/tick defines the audio fiducial, and
-the later DTMF/CRC payload only pairs the correct events. It is less visually
-intrusive and easier to capture, while still measuring relative AV offset rather
-than true source-to-capture latency.
+the later DTMF/CRC payload only pairs the correct events. It remains visually
+unobtrusive while measuring relative AV offset rather than true source-to-capture
+latency.
 
 ## Installing an unsigned build on macOS
 
 The current macOS release artifacts are not signed with an Apple Developer ID
 or notarized. macOS may therefore block the PKG installer or prevent OBS from
 loading the plugin. Only override this protection for an artifact downloaded
-from this project's [official GitHub Releases page](https://github.com/matiaspl/obs-avs/releases)
+from this project's [official GitHub Releases page](https://github.com/matiaspl/klaps/releases)
 that you trust.
 
 First try the PKG once. If macOS reports that the developer cannot be verified
@@ -72,15 +129,15 @@ If the PKG remains blocked, install the ZIP manually:
 1. Quit OBS completely. A running OBS process keeps the old plugin binary
    loaded.
 2. Download the macOS ZIP matching the installed OBS major version, then
-   double-click it to unpack `obs-avs.plugin`.
+   double-click it to unpack `klaps.plugin`.
 3. In Finder, choose **Go > Go to Folder** and enter
    `~/Library/Application Support/obs-studio/plugins`.
-4. If upgrading from a build named `obs-audio-video-sync-dock`, remove its old
-   `.plugin` bundle first so OBS does not load both copies. Check the user path
-   above and `/Library/Application Support/obs-studio/plugins` for a legacy
-   bundle.
+4. If upgrading, remove old `obs-avs.plugin` or
+   `obs-audio-video-sync-dock.plugin` bundles first so OBS does not load both
+   copies. Check the user path above and
+   `/Library/Application Support/obs-studio/plugins` for legacy bundles.
 5. Create the `plugins` folder if it does not exist, then copy
-   `obs-avs.plugin` into it. Replace the existing bundle when
+   `klaps.plugin` into it. Replace the existing bundle when
    upgrading.
 6. Start OBS again.
 
@@ -88,9 +145,9 @@ The same copy can be performed in Terminal after unpacking the ZIP in
 `~/Downloads`:
 
 ```sh
-PLUGIN="$HOME/Library/Application Support/obs-studio/plugins/obs-avs.plugin"
+PLUGIN="$HOME/Library/Application Support/obs-studio/plugins/klaps.plugin"
 mkdir -p "$HOME/Library/Application Support/obs-studio/plugins"
-ditto "$HOME/Downloads/obs-avs.plugin" "$PLUGIN"
+ditto "$HOME/Downloads/klaps.plugin" "$PLUGIN"
 ```
 
 If OBS still cannot load the plugin and the downloaded bundle has a quarantine
@@ -98,7 +155,7 @@ attribute, remove only that attribute from this plugin bundle, then restart
 OBS:
 
 ```sh
-PLUGIN="$HOME/Library/Application Support/obs-studio/plugins/obs-avs.plugin"
+PLUGIN="$HOME/Library/Application Support/obs-studio/plugins/klaps.plugin"
 xattr -lr "$PLUGIN"
 xattr -dr com.apple.quarantine "$PLUGIN"
 ```
@@ -130,13 +187,13 @@ with a camera and microphone.
 
    | MOV file | Video frame rate | Supported display frame rate |
    | -------- | ----------------:| ---------------------------- |
-   | [av-offset-pattern-6000.mov](https://matiaspl.github.io/obs-avs/av-offset-pattern-6000.mov) | 60 FPS | 30 FPS, 60 FPS, or 120 FPS (iPhone) |
-   | [av-offset-pattern-5994.mov](https://matiaspl.github.io/obs-avs/av-offset-pattern-5994.mov) | 59.94 FPS | 29.97 FPS, 59.94 FPS, or 119.88 FPS |
-   | [av-offset-pattern-5000.mov](https://matiaspl.github.io/obs-avs/av-offset-pattern-5000.mov) | 50 FPS | 25 FPS or 50 FPS (PAL) |
-   | [av-offset-pattern-3000.mov](https://matiaspl.github.io/obs-avs/av-offset-pattern-3000.mov) | 30 FPS | 30 FPS or 60 FPS |
-   | [av-offset-pattern-2997.mov](https://matiaspl.github.io/obs-avs/av-offset-pattern-2997.mov) | 29.97 FPS | 29.97 FPS or 59.94 FPS |
-   | [av-offset-pattern-2400.mov](https://matiaspl.github.io/obs-avs/av-offset-pattern-2400.mov) | 24 FPS | 24 FPS or 48 FPS |
-   | [av-offset-pattern-2398.mov](https://matiaspl.github.io/obs-avs/av-offset-pattern-2398.mov) | 23.98 FPS | 23.98 FPS (24 FPS NTSC) |
+   | [av-offset-pattern-6000.mov](https://matiaspl.github.io/klaps/av-offset-pattern-6000.mov) | 60 FPS | 30 FPS, 60 FPS, or 120 FPS (iPhone) |
+   | [av-offset-pattern-5994.mov](https://matiaspl.github.io/klaps/av-offset-pattern-5994.mov) | 59.94 FPS | 29.97 FPS, 59.94 FPS, or 119.88 FPS |
+   | [av-offset-pattern-5000.mov](https://matiaspl.github.io/klaps/av-offset-pattern-5000.mov) | 50 FPS | 25 FPS or 50 FPS (PAL) |
+   | [av-offset-pattern-3000.mov](https://matiaspl.github.io/klaps/av-offset-pattern-3000.mov) | 30 FPS | 30 FPS or 60 FPS |
+   | [av-offset-pattern-2997.mov](https://matiaspl.github.io/klaps/av-offset-pattern-2997.mov) | 29.97 FPS | 29.97 FPS or 59.94 FPS |
+   | [av-offset-pattern-2400.mov](https://matiaspl.github.io/klaps/av-offset-pattern-2400.mov) | 24 FPS | 24 FPS or 48 FPS |
+   | [av-offset-pattern-2398.mov](https://matiaspl.github.io/klaps/av-offset-pattern-2398.mov) | 23.98 FPS | 23.98 FPS (24 FPS NTSC) |
 
    The generated MOV files are the preferred reference assets. They use PCM s16
    mono audio and intra-only H.264 video without B-frames, so the timing markers
@@ -148,7 +205,7 @@ with a camera and microphone.
 
 2. Play the generated clip on the device under test.
 3. Capture the device with the camera and microphone that OBS will use.
-4. Open the Audio Video Sync dock, select `AV Offset Clip`, and start measuring.
+4. Open the Klaps dock, select `AV Offset Clip`, and start measuring.
 
 The analyzer always follows the main Program canvas and audio Track 1. It does
 not need to be added to a scene or attached to a source, and it can remain
@@ -198,7 +255,8 @@ For coupled asynchronous sources such as Media Source, or buffered AJA and
 DeckLink sources, changing Sync Offset can itself re-anchor audio in affected
 OBS versions. Treat the correction as the end of the old run: restart or
 reactivate the source if appropriate, collect a fresh set of readings, and
-verify the resulting Program output.
+verify the resulting Program output as described in
+[Asynchronous sources and repeatable measurements](#asynchronous-sources-and-repeatable-measurements).
 
 To verify the reference file itself without OBS media-source scheduling in the
 path, run:
@@ -213,41 +271,15 @@ buffering settings.
 
 ### Web generator workflow
 
-For live source-to-capture latency tests, open the web-based AVS Cue Generator:
+For live source-to-capture latency tests, open the web-based Klaps Cue Generator:
 
-<[https://matiaspl.github.io/obs-avs/](https://matiaspl.github.io/obs-avs/)>
+<[https://matiaspl.github.io/klaps/](https://matiaspl.github.io/klaps/)>
 
 The web generator renders the same v2 visual marker sequence in the browser and
 schedules matching acoustic packets against a shared wall-clock target time. Its
 QR payload includes the target UTC timestamp, so apart from the the AV offset the dock 
 can compare that source time with the capture timestamp and report `Glass-to-glass` latency. 
 This is especially useful for measuring the latency of a capture-encode-decode chain.
-
-### Legacy workflow
-
-1. Play the video.
-   Choose the appropriate video file for your player and OBS Studio configuration.
-
-   | Video file | Video frame rate | Supported display frame rate |
-   | ---------- | ----------------:| --------------------- |
-   | [sync-pattern-6000.mp4](https://matiaspl.github.io/obs-avs/sync-pattern-6000.mp4) | 60 FPS    | 30 FPS, 60 FPS, or 120 FPS (iPhone) |
-   | [sync-pattern-5994.mp4](https://matiaspl.github.io/obs-avs/sync-pattern-5994.mp4) | 59.94 FPS | 29.97 FPS, 59.94 FPS, or 119.88 FPS |
-   | [sync-pattern-5000.mp4](https://matiaspl.github.io/obs-avs/sync-pattern-5000.mp4) | 50 FPS    | 25 FPS or 50 FPS (PAL) |
-   | [sync-pattern-2400.mp4](https://matiaspl.github.io/obs-avs/sync-pattern-2400.mp4) | 24 FPS    | 24 FPS or 48 FPS |
-   | [sync-pattern-2398.mp4](https://matiaspl.github.io/obs-avs/sync-pattern-2398.mp4) | 23.98 FPS | 23.98 FPS (24 FPS NTSC) |
-
-   - Choose the video frame rate that is same as player's frame rate or twice of that. For example, if your player (or display) is 60 FPS or 30 FPS such as iPhone, choose 60 FPS. If your player is 59.94 FPS or 29.97 FPS, choose 59.94 FPS.
-   - If there are multiple candidates, try to choose the same frame rate as OBS Studio or twice of that.
-
-2. Use your camera to shoot the display playing the video so that the pattern appears on the program of OBS Studio.
-3. Open the Audio Video Sync dock and start measuring using the legacy probe.
-4. Check the latency and adjust it accordingly:
-   - Positive latency indicates audio is lagged, video is early.
-   - Negative latency indicates audio is early, video is lagged.
-   - To adjust the audio latency, increase or decrease the Sync Offset in the Advanced Audio Properties dialog in OBS Studio.
-   - To adjust the video latency, you have two options:
-     - Add a "Video Delay (Async)" filter to Audio/Video Filters on your video source (recommended if your audio comes from a different device).
-     - Add a "Render Delay" filter to Effect Filters on your video source (not recommended).
 
 ## Science behind the V2 pattern
 
