@@ -4,8 +4,8 @@
 #include <algorithm>
 #include <cmath>
 
-static constexpr double RULER_MIN_MS = -20.0;
-static constexpr double RULER_MAX_MS = 40.0;
+static constexpr double RULER_MIN_MS = -40.0;
+static constexpr double RULER_MAX_MS = 60.0;
 
 AVOffsetRuler::AVOffsetRuler(const QString &audio_early_label, const QString &audio_late_label, QWidget *parent)
 	: QWidget(parent), audioEarlyLabel(audio_early_label), audioLateLabel(audio_late_label)
@@ -54,9 +54,13 @@ void AVOffsetRuler::paintEvent(QPaintEvent *)
 
 	const QPalette colors = palette();
 	const QColor windowColor = colors.color(QPalette::Window);
-	const QColor axisColor = colors.color(QPalette::Mid);
 	const QColor textColor = colors.color(QPalette::Text);
 	const bool darkTheme = windowColor.lightness() < 128;
+	QColor axisColor = colors.color(QPalette::Mid);
+	if (darkTheme) {
+		axisColor = textColor;
+		axisColor.setAlphaF(0.65);
+	}
 	const QColor markerColor = darkTheme ? QColor(55, 185, 255) : QColor(0, 86, 185);
 	painter.setPen(QPen(axisColor, 1.0));
 	painter.drawLine(QPointF(left, axisY), QPointF(right, axisY));

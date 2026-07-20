@@ -91,10 +91,6 @@ SyncTestDock::SyncTestDock(QWidget *parent) : QFrame(parent)
 	latencyDisplay->setProperty("class", "text-large");
 	topLayout->addWidget(latencyDisplay, y++, 1);
 
-	latencyPolarity = new QLabel("-", this);
-	latencyPolarity->setObjectName("latencyPolarity");
-	topLayout->addWidget(latencyPolarity, y++, 1);
-
 	QLabel *label = new QLabel(obs_module_text("Label.GlassToGlass"), this);
 	topLayout->addWidget(label, y, 0);
 
@@ -217,7 +213,7 @@ void SyncTestDock::on_start_stop()
 		bool success = obs_output_start(o);
 
 		if (!success) {
-			latencyPolarity->setText(obs_module_text("Display.Polarity.Failure"));
+			latencyDisplay->setText(obs_module_text("Display.Polarity.Failure"));
 			blog(LOG_ERROR, "Failed to start sync-test-output.");
 			return;
 		}
@@ -546,8 +542,6 @@ void SyncTestDock::reset_analysis_stats()
 		latencyDisplay->setText(QStringLiteral("-"));
 	if (latencyRuler)
 		latencyRuler->clearMeasurement();
-	if (latencyPolarity)
-		latencyPolarity->setText(QStringLiteral("-"));
 	if (glassToGlassDisplay)
 		glassToGlassDisplay->setText(QStringLiteral("-"));
 	if (indexDisplay)
@@ -649,9 +643,5 @@ void SyncTestDock::on_sync_found(sync_index data)
 		latencyRuler->setMeasurement(ts, has_video_info ? video_info.fps_num : 0,
 					     has_video_info ? video_info.fps_den : 0);
 	indexDisplay->setText(QStringLiteral("%1").arg(data.sequence));
-	if (display_ts > 0)
-		latencyPolarity->setText(obs_module_text("Display.Polarity.Positive"));
-	else if (display_ts < 0)
-		latencyPolarity->setText(obs_module_text("Display.Polarity.Negative"));
 	update_correction_button_state();
 }

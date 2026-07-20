@@ -31,7 +31,6 @@ private:
 	QLabel *latencyLabel = nullptr;
 	QLabel *latencyDisplay = nullptr;
 	AVOffsetRuler *latencyRuler = nullptr;
-	QLabel *latencyPolarity = nullptr;
 	QLabel *glassToGlassDisplay = nullptr;
 	QLabel *indexDisplay = nullptr;
 	QLabel *videoIndexDisplay = nullptr;
