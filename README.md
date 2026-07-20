@@ -171,6 +171,8 @@ Use the MOV clip workflow when you only need relative audio/video offset
 inside a repeatable file-based test. 
 When you need the full display-to-camera-to-OBS path latency use the web generator workflow.
 
+![Klaps measuring AV offset and proposing a source Sync Offset correction](docs/klaps_dock_window.png)
+
 ### AV offset clip workflow
 
 Use this workflow when you want to measure the relative offset between audio and
@@ -210,6 +212,18 @@ with a camera and microphone.
 The analyzer always follows the main Program canvas and audio Track 1. It does
 not need to be added to a scene or attached to a source, and it can remain
 active while OBS is streaming or recording.
+
+Klaps displays AV offset to `0.1 ms`, but that is readout resolution, not a
+claim that every capture path is accurate to one tenth of a millisecond; use
+the reported median and jitter and look for repeatable results. As a practical
+limit, [EBU Recommendation R37-2007](https://tech.ebu.ch/publications/r037)
+specifies that sound should be no more than `40 ms` early or `60 ms` late, the
+same range shown by the ruler. Perception varies with content and the viewer,
+and [ITU-R BT.1359](https://www.itu.int/rec/R-REC-BT.1359-1-199811-I/en)
+reports asymmetric average thresholds: sound arriving before the matching
+picture is generally noticed sooner, especially with speech or sharp visible
+and audible events. Aim near zero rather than treating the ruler limits as
+targets.
 
 ### Correcting a source's Sync Offset
 
