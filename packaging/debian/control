@@ -1,4 +1,4 @@
-Source: audio-video-sync-dock-plugin-for-obs
+Source: klaps-plugin-for-obs
 Section: video
 Priority: optional
 Maintainer: Mateusz Starzak <mstarzak@gmail.com>
@@ -10,15 +10,15 @@ Build-Depends:
  libsimde-dev,
  qt6-base-dev, qt6-base-private-dev, libqt6svg6-dev, qt6-wayland,
  libxcb1-dev, libx11-xcb-dev, libwayland-dev, libglvnd-dev
-# Compatibility with packages produced before the obs-avs rename.
-Conflicts: obs-audio-video-sync-dock
+# Compatibility with packages produced before the Klaps rename.
+Conflicts: obs-avs, obs-audio-video-sync-dock
 Standards-Version: 4.6.2
-Homepage: https://github.com/matiaspl/obs-avs
+Homepage: https://github.com/matiaspl/klaps
 
-Package: audio-video-sync-dock-plugin-for-obs
+Package: klaps-plugin-for-obs
 Architecture: any
 Multi-Arch: foreign
 Depends:
  ${shlibs:Depends},
  ${misc:Depends},
-Description: plugin to help measuring audio and video latency on OBS Studio
+Description: Klaps audio and video latency measurement plugin for OBS Studio

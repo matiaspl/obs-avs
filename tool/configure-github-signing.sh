@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-repo="${GITHUB_REPOSITORY:-matiaspl/obs-avs}"
+repo="${GITHUB_REPOSITORY:-matiaspl/klaps}"
 
 usage()
 {
