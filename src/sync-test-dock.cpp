@@ -287,7 +287,11 @@ static std::vector<std::string> audio_source_topology(const std::vector<active_a
 static bool program_transition_active()
 {
 	OBSSourceAutoRelease transition = obs_frontend_get_current_transition();
-	return transition && obs_transition_is_active(transition);
+	if (!transition)
+		return false;
+
+	const float progress = obs_transition_get_time(transition);
+	return progress > 0.0f && progress < 1.0f;
 }
 
 static constexpr int64_t NS_PER_MS = 1000000;
