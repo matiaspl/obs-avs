@@ -2,11 +2,34 @@
 
 ## Introduction
 
-Klaps is an OBS Studio plugin that measures audio offset and video latency.
+Klaps is an OBS Studio plugin that measures audio offset and video latency. 
 
-It's based on solid grounds of Norihiro's [Audio Video Sync Dock](https://obsproject.com/forum/resources/audio-video-sync-dock.2028/). 
+The Polish word _"klaps"_ has a dual meaning - it's either a spank or 
+a film clapperboard. In combat conditions both can be used to measure AV 
+synchronization i guess... ;)
 
-Programming work done by Codex.
+The software is based on solid grounds of Norihiro's [Audio Video Sync Dock](https://obsproject.com/forum/resources/audio-video-sync-dock.2028/). 
+
+The ideas for improvements are mine, the programming work has been done by Codex.
+
+## Motivation behind the fork
+
+The AV offset workflow provides repeatable relative AV sync checks through real
+displays, speakers, cameras, microphones, OBS media and browser sources, and
+recordings. Its key properties are:
+- lower-flash video markers,
+- extended QR Code vocabulary allowing glass-to-glass latency  measurements,
+- new visual markers for naked-eye AV offset assessment (web generator-only),
+- cleaner event timing,
+- sample-centered chirp/tick audio detection designed for echo and reverberation tolerance,
+- DTMF/CRC event identity,
+- MOV reference assets that avoid AAC priming and B-frame reorder bias.
+
+The redesigned protocol separates timing from identity: sparse checkerboard 
+transitions define the video instant, a matched-filter chirp/tick defines the 
+audio fiducial, and the later DTMF/CRC payload only pairs the correct events. 
+It remains visually unobtrusive while measuring relative AV offset rather than 
+true source-to-capture latency.
 
 OBS Studio 31 or newer is required. The dock analyzes the main Program video
 and audio Track 1 through a private pair of no-op OBS encoders. These encoders
@@ -47,11 +70,7 @@ nonzero value and back to `0 ms` while it is playing: in OBS 32.1.2 that can
 re-anchor the queued audio and leave a persistent step in the Program A/V
 measurement even though the final configured offset is zero. This is a libobs
 async-source startup/queue behavior, not evidence that Media Source changed
-the file's A/V timestamps or that the dock is reading source timestamps.
-
-Browser Source is not a useful control for this specific effect. Its video is
-drawn through a different, synchronous source path, so it does not use the
-same async-video timing-anchor handoff as Media Source.
+the file's A/V timestamps or that the Klaps is incorrectly reading the timestamps.
 
 ### AJA and DeckLink capture sources
 
@@ -87,27 +106,8 @@ For consistent results:
 
 The general OBS-side remedy is to discard audio buffered before the first
 async-video timing anchor, then place subsequent audio using the video-derived
-mapping. Until that is available in the OBS version being tested, the clean
-startup workflow above is the reliable way to compare async-source results.
-
-## Motivation behind the fork
-
-The AV offset workflow provides repeatable relative AV sync checks through real
-displays, speakers, cameras, microphones, OBS media and browser sources, and
-recordings. Its key properties are:
-- lower-flash video markers,
-- extended QR Code vocabulary allowing glass-to-glass latency  measurements,
-- new visual markers for naked-eye AV offset assessment (web generator-only),
-- cleaner event timing,
-- sample-centered chirp/tick audio detection designed for echo and reverberation tolerance,
-- DTMF/CRC event identity,
-- MOV reference assets that avoid AAC priming and B-frame reorder bias.
-
-The protocol separates timing from identity: sparse checkerboard transitions define
-the video instant, a matched-filter chirp/tick defines the audio fiducial, and
-the later DTMF/CRC payload only pairs the correct events. It remains visually
-unobtrusive while measuring relative AV offset rather than true source-to-capture
-latency.
+mapping. Until that is available in libobs, the clean startup workflow above is 
+the reliable way to compare async-source results.
 
 ## Installing an unsigned build on macOS
 
@@ -173,6 +173,34 @@ When you need the full display-to-camera-to-OBS path latency use the web generat
 
 ![Klaps measuring AV offset and proposing a source Sync Offset correction](docs/klaps_dock_window.png)
 
+The analyzer always follows the main Program canvas and audio Track 1. Note, 
+that the analysis needs to be stopped in order to change the canvas framerate 
+or resolution.
+
+Klaps displays AV offset to `0.1 ms`, but that is readout resolution, not a
+claim that every capture path is accurate to one tenth of a millisecond; use
+the reported median and jitter and look for repeatable results. As a practical
+limit, [EBU Recommendation R37-2007](https://tech.ebu.ch/publications/r037)
+specifies that sound should be no more than `40 ms` early or `60 ms` late, the
+same range shown by the ruler. Perception varies with content and the viewer,
+and [ITU-R BT.1359](https://www.itu.int/rec/R-REC-BT.1359-1-199811-I/en)
+reports asymmetric average thresholds: sound arriving before the matching
+picture is generally noticed sooner, especially with speech or sharp visible
+and audible events. Aim near zero rather than treating the ruler limits as
+targets.
+
+### Web generator workflow
+
+For live source-to-capture latency tests, open the web-based Klaps Cue Generator:
+
+<[https://matiaspl.github.io/klaps/](https://matiaspl.github.io/klaps/)>
+
+The web generator renders the same v2 visual marker sequence in the browser and
+schedules matching acoustic packets against a shared wall-clock target time. Its
+QR payload includes the target UTC timestamp, so apart from the the AV offset the dock 
+can compare that source time with the capture timestamp and report `Glass-to-glass` latency. 
+This is especially useful for measuring the latency of a capture-encode-decode chain.
+
 ### AV offset clip workflow
 
 Use this workflow when you want to measure the relative offset between audio and
@@ -207,23 +235,7 @@ with a camera and microphone.
 
 2. Play the generated clip on the device under test.
 3. Capture the device with the camera and microphone that OBS will use.
-4. Open the Klaps dock, select `AV Offset Clip`, and start measuring.
-
-The analyzer always follows the main Program canvas and audio Track 1. It does
-not need to be added to a scene or attached to a source, and it can remain
-active while OBS is streaming or recording.
-
-Klaps displays AV offset to `0.1 ms`, but that is readout resolution, not a
-claim that every capture path is accurate to one tenth of a millisecond; use
-the reported median and jitter and look for repeatable results. As a practical
-limit, [EBU Recommendation R37-2007](https://tech.ebu.ch/publications/r037)
-specifies that sound should be no more than `40 ms` early or `60 ms` late, the
-same range shown by the ruler. Perception varies with content and the viewer,
-and [ITU-R BT.1359](https://www.itu.int/rec/R-REC-BT.1359-1-199811-I/en)
-reports asymmetric average thresholds: sound arriving before the matching
-picture is generally noticed sooner, especially with speech or sharp visible
-and audible events. Aim near zero rather than treating the ruler limits as
-targets.
+4. Open the Klaps dock and start measuring.
 
 ### Correcting a source's Sync Offset
 
@@ -282,18 +294,6 @@ path, run:
 When validating OBS behavior, compare the dock result against an actual OBS
 recording made with the same source sync offsets, encoder, frame rate, and audio
 buffering settings.
-
-### Web generator workflow
-
-For live source-to-capture latency tests, open the web-based Klaps Cue Generator:
-
-<[https://matiaspl.github.io/klaps/](https://matiaspl.github.io/klaps/)>
-
-The web generator renders the same v2 visual marker sequence in the browser and
-schedules matching acoustic packets against a shared wall-clock target time. Its
-QR payload includes the target UTC timestamp, so apart from the the AV offset the dock 
-can compare that source time with the capture timestamp and report `Glass-to-glass` latency. 
-This is especially useful for measuring the latency of a capture-encode-decode chain.
 
 ## Science behind the V2 pattern
 
