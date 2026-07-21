@@ -195,7 +195,7 @@ For live source-to-capture latency tests, open the web-based Klaps Cue Generator
 
 <[https://matiaspl.github.io/klaps/](https://matiaspl.github.io/klaps/)>
 
-The web generator renders the same v2 visual marker sequence in the browser and
+The web generator renders the visual marker sequence in the browser and
 schedules matching acoustic packets against a shared wall-clock target time. Its
 QR payload includes the target UTC timestamp, so apart from the the AV offset the dock 
 can compare that source time with the capture timestamp and report `Glass-to-glass` latency. 
@@ -226,16 +226,16 @@ with a camera and microphone.
    | [av-offset-pattern-2398.mov](https://matiaspl.github.io/klaps/av-offset-pattern-2398.mov) | 23.98 FPS | 23.98 FPS (24 FPS NTSC) |
 
    The generated MOV files are the preferred reference assets. They use PCM s16
-   mono audio and intra-only H.264 video without B-frames, so the timing markers
-   are not shifted by AAC encoder priming or video frame reordering. MP4 files
-   with AAC audio are easier to play in some environments, but the lossy audio
-   path can add a fixed priming bias and normal H.264 GOPs can add reorder
+   mono audio and intra-only H.264 video, so the timing markers are not shifted
+   by AAC encoder priming or video frame reordering due to B-frames presence.
+   MP4 files with AAC audio are easier to play in some environments, but the lossy
+   audio path can add a fixed priming bias and normal H.264 GOPs can add reorder
    latency; use those only when you intentionally want to measure that playback
    or codec behavior.
 
-2. Play the generated clip on the device under test.
-3. Capture the device with the camera and microphone that OBS will use.
-4. Open the Klaps dock and start measuring.
+3. Play the generated clip on the device under test.
+4. Capture the device with the camera and microphone that OBS will use.
+5. Open the Klaps dock and start measuring.
 
 ### Correcting a source's Sync Offset
 
@@ -295,9 +295,9 @@ When validating OBS behavior, compare the dock result against an actual OBS
 recording made with the same source sync offsets, encoder, frame rate, and audio
 buffering settings.
 
-## Science behind the V2 pattern
+## Science behind the pattern
 
-The v2 pattern uses sparse checkerboard events for video timing and far-field
+The redesigned pattern uses sparse checkerboard events for video timing and far-field
 acoustic packets for audio timing and identity. The exact audio event is the
 center of the packet's short tick inside the centered matched-filter marker.
 The QR code stores its metadata as a compact comma-separated ASCII list of
